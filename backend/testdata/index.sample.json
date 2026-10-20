@@ -1,0 +1,78 @@
+{
+  "reporting_entity_name": "Centene Management Company LLC",
+  "reporting_entity_type": "Third Party Administrator",
+  "last_updated_on": "2026-08-31",
+  "version": "2.0.0",
+  "reporting_structure": [
+    {
+      "reporting_plans": [
+        {
+          "plan_name": "Ambetter from Fidelis Care Bronze",
+          "plan_id_type": "hios",
+          "plan_id": "25303NY005",
+          "plan_market_type": "individual",
+          "issuer_name": "Fidelis Care"
+        },
+        {
+          "plan_name": "Ambetter from Fidelis Care Gold Zero Cost Sharing",
+          "plan_id_type": "hios",
+          "plan_id": "25303NY017",
+          "plan_market_type": "individual",
+          "issuer_name": "Fidelis Care"
+        },
+        {
+          "plan_name": "Ambetter from Fidelis Care Platinum Limited Cost Sharing",
+          "plan_id_type": "hios",
+          "plan_id": "25303NY008",
+          "plan_market_type": "individual",
+          "issuer_name": "Fidelis Care"
+        }
+      ],
+      "in_network_files": [
+        {
+          "description": "in-network file",
+          "location": "file://testdata/in-network.sample.json#0"
+        }
+      ],
+      "allowed_amount_file": {
+        "description": "allowed-amounts file",
+        "location": "https://www.centene.com/content/dam/centene/Centene%20Corporate/json/DOCUMENT/2026-08-31_centene-management-company-llc_fidelis-ex_allowed-amounts.json"
+      }
+    },
+    {
+      "reporting_plans": [
+        {
+          "plan_name": "Essential Plan 1",
+          "plan_id_type": "hios",
+          "plan_id": "25303EP000",
+          "plan_market_type": "individual",
+          "issuer_name": "Fidelis Care"
+        },
+        {
+          "plan_name": "Essential Plan 3",
+          "plan_id_type": "hios",
+          "plan_id": "25303EP000",
+          "plan_market_type": "individual",
+          "issuer_name": "Fidelis Care"
+        },
+        {
+          "plan_name": "Essential Plan 4",
+          "plan_id_type": "hios",
+          "plan_id": "25303EP000",
+          "plan_market_type": "individual",
+          "issuer_name": "Fidelis Care"
+        }
+      ],
+      "in_network_files": [
+        {
+          "description": "in-network file",
+          "location": "file://testdata/in-network.sample.json#1"
+        }
+      ],
+      "allowed_amount_file": {
+        "description": "allowed-amounts file",
+        "location": "https://www.centene.com/content/dam/centene/Centene%20Corporate/json/DOCUMENT/2026-08-31_centene-management-company-llc_fidelis-es_allowed-amounts.json"
+      }
+    }
+  ]
+}

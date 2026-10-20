@@ -1,0 +1,510 @@
+{
+  "reporting_entity_name": "Centene Management Company LLC",
+  "reporting_entity_type": "Third Party Administrator",
+  "version": "2.0.0",
+  "last_updated_on": "2026-09-02",
+  "provider_references": [
+    {
+      "provider_group_id": 1,
+      "network_name": [],
+      "provider_groups": [
+        {
+          "npi": [
+            1396747861
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "11-3471596",
+            "business_name": "Minkowitz Consulting Pathologists PC"
+          }
+        }
+      ]
+    },
+    {
+      "provider_group_id": 3,
+      "network_name": [],
+      "provider_groups": [
+        {
+          "npi": [
+            1104955491
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "10-7749043",
+            "business_name": "Leonid S. Chernobelsky"
+          }
+        }
+      ]
+    },
+    {
+      "provider_group_id": 4,
+      "network_name": [],
+      "provider_groups": [
+        {
+          "npi": [
+            1992965974
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "46-5120552",
+            "business_name": "Colorectal Care, PLLC"
+          }
+        }
+      ]
+    },
+    {
+      "provider_group_id": 6,
+      "network_name": [],
+      "provider_groups": [
+        {
+          "npi": [
+            1821188236,
+            1215106539,
+            1700804713,
+            1205873130
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "20-0096809",
+            "business_name": "Multispecialty Physicians of University Hospital, PC"
+          }
+        },
+        {
+          "npi": [
+            1205085222
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "13-1740118",
+            "business_name": "Northern Westchester Hospital"
+          }
+        },
+        {
+          "npi": [
+            1427107473
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "85-3052457",
+            "business_name": "Medical Services of Kips Bay PC"
+          }
+        }
+      ]
+    },
+    {
+      "provider_group_id": 100,
+      "network_name": [],
+      "provider_groups": [
+        {
+          "npi": [
+            1215030697
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "11-1986351",
+            "business_name": "The New York Community Hospital of Brooklyn, Inc"
+          }
+        }
+      ]
+    },
+    {
+      "provider_group_id": 1298,
+      "network_name": [],
+      "provider_groups": [
+        {
+          "npi": [
+            1528130903
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "33-1074234",
+            "business_name": "Capitaland Taxi"
+          }
+        },
+        {
+          "npi": [
+            1831172345
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "23-7352277",
+            "business_name": "Northern Oswego County Ambulance, Inc"
+          }
+        },
+        {
+          "npi": [
+            1750391991
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "16-1131112",
+            "business_name": "Bangs Ambulance, Inc."
+          }
+        },
+        {
+          "npi": [
+            1700869849
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "23-7334649",
+            "business_name": "Donald McFee Memorial Ambulance Services"
+          }
+        },
+        {
+          "npi": [
+            1477536381
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "14-6039822",
+            "business_name": "Fort Ann Rescue Squad"
+          }
+        },
+        {
+          "npi": [
+            1396941407
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "16-1421029",
+            "business_name": "Suburban Transportation, Inc."
+          }
+        },
+        {
+          "npi": [
+            1700937794
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "16-0743080",
+            "business_name": "Medical Motor Service of Rochester"
+          }
+        },
+        {
+          "npi": [
+            1902848799
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "23-7389741",
+            "business_name": "Southern Oswego Volunteer Ambulance Corps, Inc."
+          }
+        },
+        {
+          "npi": [
+            1700890647
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "14-1621905",
+            "business_name": "Glens Falls Ambulance Service"
+          }
+        },
+        {
+          "npi": [
+            1659370518
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "15-6000413",
+            "business_name": "City of Oswego"
+          }
+        },
+        {
+          "npi": [
+            1497736821
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "16-1417973",
+            "business_name": "Vestal Volunteer Emergency Squad"
+          }
+        },
+        {
+          "npi": [
+            1275940272
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "14-6002200",
+            "business_name": "City of Gloversville"
+          }
+        },
+        {
+          "npi": [
+            1447235114
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "16-1020059",
+            "business_name": "Guilfoyle Ambulance Service, Inc."
+          }
+        },
+        {
+          "npi": [
+            1912058207
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "22-2473412",
+            "business_name": "Hoosic Valley Rescue Squad, Inc."
+          }
+        },
+        {
+          "npi": [
+            1073581484
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "14-1505546",
+            "business_name": "Greater Amsterdam Volunteer Ambulance Corps, Inc."
+          }
+        },
+        {
+          "npi": [
+            1184957722
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "26-3056714",
+            "business_name": "CDMT (Capital District Medical Transport)"
+          }
+        },
+        {
+          "npi": [
+            1235113804
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "14-1821747",
+            "business_name": "Johnsburg Emergency Squad"
+          }
+        }
+      ]
+    },
+    {
+      "provider_group_id": 99901,
+      "network_name": [
+        "Ambetter Network"
+      ],
+      "provider_groups": [
+        {
+          "npi": [
+            0,
+            1234567893
+          ],
+          "tin": {
+            "type": "ein",
+            "value": "99-1234567",
+            "business_name": "Placeholder NPI Clinic LLC"
+          }
+        }
+      ]
+    }
+  ],
+  "in_network": [
+    {
+      "negotiation_arrangement": "ffs",
+      "name": "FNA BX W/US GDN EA ADDL",
+      "billing_code_type": "CPT",
+      "billing_code_type_version": "2022",
+      "billing_code": "10006",
+      "description": "FINE NEEDLE ASPIRATION BX W/US GDN EA ADDL",
+      "negotiated_rates": [
+        {
+          "negotiated_prices": [
+            {
+              "negotiated_type": "negotiated",
+              "negotiated_rate": 69.85,
+              "expiration_date": "9999-12-31",
+              "service_code": [
+                "11"
+              ],
+              "billing_class": "professional",
+              "billing_code_modifier": [
+                "59"
+              ],
+              "setting": "outpatient"
+            }
+          ],
+          "provider_references": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "negotiation_arrangement": "ffs",
+      "name": "IV Therapy Pharmacy services",
+      "billing_code_type": "RC",
+      "billing_code_type_version": "2022",
+      "billing_code": "262",
+      "description": "IV Therapy Pharmacy services",
+      "negotiated_rates": [
+        {
+          "negotiated_prices": [
+            {
+              "negotiated_type": "negotiated",
+              "negotiated_rate": 26.51,
+              "expiration_date": "9999-12-31",
+              "service_code": [
+                "22"
+              ],
+              "billing_class": "institutional",
+              "setting": "outpatient"
+            }
+          ],
+          "provider_references": [
+            100
+          ]
+        }
+      ]
+    },
+    {
+      "negotiation_arrangement": "ffs",
+      "name": "AMB SVC ALS ER TRNSPRT LVL1",
+      "billing_code_type": "HCPCS",
+      "billing_code_type_version": "2022",
+      "billing_code": "A0427",
+      "description": "AMBULANCE SERVICE, ADVANCED LIFE SUPPORT, EMERGENCY TRANSPORT, LEVEL 1 (ALS 1 - EMERGENCY)",
+      "negotiated_rates": [
+        {
+          "negotiated_prices": [
+            {
+              "negotiated_type": "negotiated",
+              "negotiated_rate": 310.8,
+              "expiration_date": "9999-12-31",
+              "service_code": [
+                "41"
+              ],
+              "billing_class": "professional",
+              "billing_code_modifier": [
+                "RH"
+              ],
+              "setting": "outpatient"
+            }
+          ],
+          "provider_references": [
+            1298
+          ]
+        }
+      ]
+    },
+    {
+      "negotiation_arrangement": "ffs",
+      "name": "CHEMICAL CAUTERY, TISSUE",
+      "billing_code_type": "CPT",
+      "billing_code_type_version": "2022",
+      "billing_code": "17250",
+      "description": "CHEMICAL CAUTERIZATION OF GRANULATION TISSUE (IE, PROUD FLESH)",
+      "negotiated_rates": [
+        {
+          "negotiated_prices": [
+            {
+              "negotiated_type": "negotiated",
+              "negotiated_rate": 76.85,
+              "expiration_date": "9999-12-31",
+              "service_code": [
+                "11"
+              ],
+              "billing_class": "professional",
+              "billing_code_modifier": [
+                "58"
+              ],
+              "setting": "outpatient"
+            }
+          ],
+          "provider_references": [
+            4
+          ]
+        },
+        {
+          "negotiated_prices": [
+            {
+              "negotiated_type": "negotiated",
+              "negotiated_rate": 84.06,
+              "expiration_date": "9999-12-31",
+              "service_code": [
+                "11"
+              ],
+              "billing_class": "professional",
+              "billing_code_modifier": [
+                "79"
+              ],
+              "setting": "outpatient"
+            },
+            {
+              "negotiated_type": "negotiated",
+              "negotiated_rate": 42.03,
+              "expiration_date": "9999-12-31",
+              "service_code": [
+                "11"
+              ],
+              "billing_class": "professional",
+              "billing_code_modifier": [
+                "59"
+              ],
+              "setting": "outpatient"
+            }
+          ],
+          "provider_references": [
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "negotiation_arrangement": "ffs",
+      "name": "OFFICE/OUTPATIENT VISIT EST",
+      "billing_code_type": "CPT",
+      "billing_code_type_version": "2022",
+      "billing_code": "99213",
+      "description": "OFFICE OR OTHER OUTPATIENT VISIT, ESTABLISHED PATIENT, 20-29 MINUTES",
+      "negotiated_rates": [
+        {
+          "negotiated_prices": [
+            {
+              "negotiated_type": "negotiated",
+              "negotiated_rate": 125.5,
+              "expiration_date": "9999-12-31",
+              "service_code": [
+                "11",
+                "22"
+              ],
+              "billing_class": "professional",
+              "setting": "outpatient"
+            }
+          ],
+          "provider_references": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "negotiation_arrangement": "ffs",
+      "name": "SYNTHETIC EDGE CASE",
+      "billing_code_type": "CPT",
+      "billing_code_type_version": "2022",
+      "billing_code": "00100",
+      "description": "Synthetic record exercising placeholder NPI and missing optional fields",
+      "negotiated_rates": [
+        {
+          "negotiated_prices": [
+            {
+              "negotiated_type": "negotiated",
+              "negotiated_rate": 10.0,
+              "expiration_date": "2027-12-31",
+              "billing_class": "institutional",
+              "setting": "inpatient"
+            }
+          ],
+          "provider_references": [
+            99901
+          ]
+        }
+      ]
+    }
+  ]
+}
