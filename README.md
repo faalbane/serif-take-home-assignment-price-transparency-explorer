@@ -68,7 +68,7 @@ On startup the server reads the index file and ingests **both** in-network files
 it references — 263 MB in total. The UI shows real progress while this happens
 rather than an indefinite spinner. Downloaded files are cached in
 `backend/.cache`, so every restart after the first takes about 6 seconds (parse
-only). The cache is gitignored.
+only). The cache is 273 MB and is gitignored.
 
 If you want to skip the wait while poking at the code:
 
@@ -339,8 +339,8 @@ a separate index per filterable field on a dataset that is rebuilt from scratch
 on every boot.
 
 **Where that bites:** the tail. Revenue code 490 matches 208,332 rows, and
-scanning, sorting and summarizing them takes ~67 ms — three orders of magnitude
-slower than the median query. See [Performance](#performance).
+scanning, sorting and summarizing them takes ~70 ms — orders of magnitude
+slower than a typical query. See [Performance](#performance).
 
 ### Facets exclude their own filter
 
@@ -449,15 +449,16 @@ Measured on an M-series laptop against the live files.
 
 | | |
 |---|---|
-| Cold start (download 263 MB + parse + index) | **13.4 s** |
-| Warm start (cached files, parse + index) | **6.1 s** |
-| Resident memory, fully ingested | **~420 MB** |
-| Typical query (2,262 rows) | **0.3 ms** |
-| Small query (2 rows) | **0.02 ms** |
-| Worst case (code 490, 208,332 rows) | **67 ms** |
-| 200 requests at 20-way concurrency on the worst case | p50 439 ms, p95 654 ms |
+| Cold start (download 263 MB + parse + index) | **13.8 s** |
+| Warm start (cached files, parse + index) | **6.2 s** |
+| Resident memory, fully ingested | **~450 MB** |
+| On-disk cache after first run | **273 MB** |
+| Typical query (2,262 rows) | **0.4 ms** |
+| Small query (2 rows) | **0.01 ms** |
+| Worst case (code 490, 208,332 rows) | **~70 ms** |
+| 200 requests at 20-way concurrency on the worst case | p50 488 ms, p95 672 ms |
 
-The worst case started at 202 ms. Three changes brought it to 67:
+The worst case started at 202 ms. Three changes brought it to ~70:
 
 1. Facets were five separate passes with map writes per row. Faceted dimensions
    now carry `uint8` ordinals assigned at build time, so one pass over the
