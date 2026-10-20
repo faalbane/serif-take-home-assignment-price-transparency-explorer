@@ -12,6 +12,9 @@ frontend/coverage/
 backend/coverage.out
 *.tsbuildinfo
 
+# Submission archives kept alongside the repo for convenience
+*.zip
+
 # Runtime data cache (raw CMS files, hundreds of MB)
 .cache/
 backend/.cache/
