@@ -268,6 +268,11 @@ decisions below.
 Combined: **581,860 rate rows**, 1,308 distinct codes, 14,865 provider groups,
 58,691 NPIs, 7,087 EINs, 94 plans.
 
+Rows per code are extremely skewed — median **5**, p90 **106**, mean **445**,
+max **208,332**. Most codes are tiny; a handful dominate. That shape is what
+makes a simple code index plus a linear scan the right call, and it is also
+what makes the worst case worth measuring separately.
+
 ### Things worth knowing about these files
 
 1. **Providers are never inline.** All 146,113 rate groups use
@@ -327,12 +332,15 @@ error. For files this size, resilience is worth the copy.
 ### Flatten eagerly, index narrowly
 
 Rows are flattened at ingest and indexed by billing code; every other filter is
-a linear scan over that code's rows. A code resolves to 288 rows on average, so
-this is microseconds, and it avoids maintaining an index per filterable field
-for a dataset that is rebuilt from scratch on every boot.
+a linear scan over that code's rows. The rows-per-code distribution is heavily
+skewed — **median 5, p90 106, mean 445, max 208,332** — so for almost every
+query the scan is a few microseconds. That buys the ability to skip maintaining
+a separate index per filterable field on a dataset that is rebuilt from scratch
+on every boot.
 
-**Where that bites:** revenue code 490 matches 208,332 rows, and scanning,
-sorting and summarizing them takes ~67 ms. See [Performance](#performance).
+**Where that bites:** the tail. Revenue code 490 matches 208,332 rows, and
+scanning, sorting and summarizing them takes ~67 ms — three orders of magnitude
+slower than the median query. See [Performance](#performance).
 
 ### Facets exclude their own filter
 
@@ -470,9 +478,10 @@ make test-race   # race detector
 make cover       # coverage summary
 ```
 
-**82.9% statement coverage**, clean under `-race`, and **no test touches the
-network** — fixtures are trimmed from the live files and served from `httptest`
-or the local filesystem.
+**82.8% statement coverage**, clean under `-race`, and **no test reaches the
+internet** — fixtures are trimmed from the live files and served from loopback
+`httptest` servers or read from the local filesystem, so the suite runs offline
+and deterministically.
 
 What the tests actually pin down, beyond happy paths:
 

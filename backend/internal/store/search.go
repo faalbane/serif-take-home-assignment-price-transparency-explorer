@@ -113,10 +113,11 @@ const (
 // Search executes a query.
 //
 // The code index gives the candidate set in one map lookup; everything else is
-// a linear scan over those candidates. On the live dataset a code resolves to
-// 288 rows on average, so this is microseconds, and it avoids maintaining an
-// index per filterable field for a dataset that is rebuilt from scratch on
-// every boot.
+// a linear scan over those candidates. The rows-per-code distribution on the
+// live files is heavily skewed -- median 5, p90 106, mean 445, max 208,332 --
+// so for almost every query the scan is a few microseconds, which is what makes
+// it reasonable to skip a separate index per filterable field on a dataset
+// rebuilt from scratch on every boot.
 func (s *Store) Search(q Query) Result {
 	code := strings.TrimSpace(q.BillingCode)
 	candidates := s.byCode[code]
