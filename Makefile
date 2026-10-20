@@ -15,6 +15,7 @@ help:
 	@echo ""
 	@echo "  make dev        Run backend (:8080) and frontend dev server (:5173)"
 	@echo "  make run        Build the UI and serve the whole app from :8080"
+	@echo "  make demo       Run on bundled fixtures -- no download, starts instantly"
 	@echo "  make backend    Run the API only (:8080)"
 	@echo "  make frontend   Run the Vite dev server only (:5173)"
 	@echo "  make build      Build the frontend and the server binary"
@@ -60,6 +61,17 @@ build: $(FRONTEND)/node_modules
 run: build
 	@echo "open http://localhost:8080"
 	cd $(BACKEND) && ./bin/server -static-dir ../$(FRONTEND)/dist
+
+# Runs against the bundled fixtures: no download, ready in well under a second.
+# Use this to see the app working before committing to a 263 MB ingest.
+.PHONY: demo
+demo: $(FRONTEND)/node_modules
+	cd $(FRONTEND) && npm run build
+	cd $(BACKEND) && go run ./cmd/server -index-url testdata/index.demo.json -static-dir ../$(FRONTEND)/dist
+
+.PHONY: demo-api
+demo-api:
+	cd $(BACKEND) && go run ./cmd/server -index-url testdata/index.demo.json
 
 .PHONY: fast
 fast:

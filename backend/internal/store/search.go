@@ -32,6 +32,10 @@ type Query struct {
 	Sort     string // rate_asc | rate_desc | provider | npi_count
 	Page     int    // 1-based
 	PageSize int
+	// Unpaged lifts the page-size clamp for bulk export. Interactive requests
+	// must never set it: the clamp is what stops a query string from asking
+	// for half a million rows in one response.
+	Unpaged bool
 }
 
 // Stats summarizes the rate distribution of a full result set, not just the
@@ -57,11 +61,19 @@ type Bucket struct {
 	Count int     `json:"count"`
 }
 
+// MissingValue is the filter parameter that selects rows whose value for a
+// dimension is absent from the source file.
+//
+// The empty string cannot serve this purpose: in a query string it is
+// indistinguishable from "no filter". Facets emit this sentinel as their Value
+// so that every facet the UI renders is one the UI can actually apply.
+const MissingValue = "__missing__"
+
 // FacetCount is one value of a facet and how many rows carry it.
 //
 // Value is what the client sends back as the filter parameter; Label is what it
 // displays. They differ for the source dimension, where the parameter is a
-// numeric id and the label is a file name.
+// numeric id, and for absent values, where the parameter is MissingValue.
 type FacetCount struct {
 	Value string `json:"value"`
 	Label string `json:"label"`
@@ -180,10 +192,10 @@ func (s *Store) Search(q Query) Result {
 	// Normalize the enum filters once. Stored values are already lowercased
 	// (uppercased for code type) at build time, so comparison is ==, not a
 	// case-folding call per row.
-	fBillingClass := strings.ToLower(strings.TrimSpace(q.BillingClass))
-	fSetting := strings.ToLower(strings.TrimSpace(q.Setting))
-	fNegotiatedType := strings.ToLower(strings.TrimSpace(q.NegotiatedType))
-	fCodeType := strings.ToUpper(strings.TrimSpace(q.BillingCodeType))
+	fBillingClass := normalizeFilter(q.BillingClass, strings.ToLower)
+	fSetting := normalizeFilter(q.Setting, strings.ToLower)
+	fNegotiatedType := normalizeFilter(q.NegotiatedType, strings.ToLower)
+	fCodeType := normalizeFilter(q.BillingCodeType, strings.ToUpper)
 
 	// One pass produces both the matched set and every facet.
 	//
@@ -220,19 +232,19 @@ func (s *Store) Search(q Query) Result {
 
 		fails := 0
 		failed := dimBillingClass
-		if fBillingClass != "" && r.BillingClass != fBillingClass {
+		if fBillingClass != noFilter && r.BillingClass != fBillingClass {
 			fails++
 			failed = dimBillingClass
 		}
-		if fSetting != "" && r.Setting != fSetting {
+		if fSetting != noFilter && r.Setting != fSetting {
 			fails++
 			failed = dimSetting
 		}
-		if fNegotiatedType != "" && r.NegotiatedType != fNegotiatedType {
+		if fNegotiatedType != noFilter && r.NegotiatedType != fNegotiatedType {
 			fails++
 			failed = dimNegotiatedType
 		}
-		if fCodeType != "" && item.BillingCodeType != fCodeType {
+		if fCodeType != noFilter && item.BillingCodeType != fCodeType {
 			fails++
 			failed = dimCodeType
 		}
@@ -293,38 +305,71 @@ func (s *Store) Search(q Query) Result {
 	if pageSize <= 0 {
 		pageSize = defaultPageSize
 	}
-	if pageSize > maxPageSize {
+	if pageSize > maxPageSize && !q.Unpaged {
 		pageSize = maxPageSize
 	}
 	page := q.Page
 	if page <= 0 {
 		page = 1
 	}
-	start := (page - 1) * pageSize
-	if start > len(matched) {
-		start = len(matched)
+
+	// Clamp the offset before multiplying. A page number large enough to
+	// overflow int would otherwise produce a negative start that slips past an
+	// upper-bound-only guard and panics on the slice.
+	start := len(matched)
+	if page <= 1 {
+		start = 0
+	} else if offset := (page - 1) * pageSize; offset >= 0 && offset < len(matched) {
+		start = offset
 	}
 	end := start + pageSize
-	if end > len(matched) {
+	if end > len(matched) || end < start {
 		end = len(matched)
 	}
 	res.RowIDs = matched[start:end]
 	return res
 }
 
-// alternateCodeSpelling toggles leading-zero padding, so "450" finds the
-// revenue code stored as "0450" and vice versa.
+// alternateCodeSpelling toggles revenue-code zero padding, so "450" finds a
+// code stored as "0450" and vice versa.
+//
+// Deliberately narrow: it only converts between the two spellings of a 3-or-4
+// digit revenue code. An unbounded TrimLeft would turn the CPT anesthesia code
+// "00100" into "100" and return a completely different code's rates, which is
+// worse than returning nothing.
 func alternateCodeSpelling(code string) string {
-	if code == "" {
+	if !isAllDigits(code) {
 		return ""
 	}
-	if strings.HasPrefix(code, "0") {
-		return strings.TrimLeft(code, "0")
-	}
-	if len(code) < 4 && isAllDigits(code) {
-		return strings.Repeat("0", 4-len(code)) + code
+	switch len(code) {
+	case 4:
+		if code[0] == '0' {
+			return code[1:]
+		}
+	case 3:
+		return "0" + code
 	}
 	return ""
+}
+
+// noFilter is the sentinel meaning "this dimension is unfiltered". It cannot
+// be the empty string, because the empty string is a legitimate value to filter
+// ON -- rows whose field is absent from the source file.
+const noFilter = "\x00unset"
+
+// normalizeFilter maps a raw query parameter to the value compared against a
+// row: noFilter when nothing was supplied, the empty string when the caller
+// asked for absent values, and the case-normalized value otherwise.
+func normalizeFilter(raw string, fold func(string) string) string {
+	raw = strings.TrimSpace(raw)
+	switch raw {
+	case "":
+		return noFilter
+	case MissingValue:
+		return ""
+	default:
+		return fold(raw)
+	}
 }
 
 func isAllDigits(s string) bool {
@@ -344,16 +389,16 @@ func (s *Store) facetFrom(d dim, counts []int) []FacetCount {
 		if c == 0 {
 			continue
 		}
-		label := ""
+		raw := ""
 		if i < len(domain) {
-			label = domain[i]
+			raw = domain[i]
 		}
-		if label == "" {
-			label = "(not reported)"
+		label, value := raw, raw
+		if raw == "" {
+			label, value = "(not reported)", MissingValue
 		}
 		// The source filter parameter is the numeric source id; every other
 		// dimension filters on its own value.
-		value := label
 		if d == dimSource {
 			value = strconv.Itoa(i)
 		}
@@ -515,6 +560,12 @@ func histogram(sorted []float64, buckets int) []Bucket {
 	for i := 0; i < buckets; i++ {
 		out[i] = Bucket{From: lo + float64(i)*width, To: lo + float64(i+1)*width}
 	}
+	// Pin the outer edges to the real extremes. Accumulated floating-point
+	// error in lo + n*width can leave the last bucket's upper bound just below
+	// the maximum value it actually contains, which reads as a wrong axis
+	// label even though no value is miscounted.
+	out[0].From = lo
+	out[buckets-1].To = hi
 	for _, v := range sorted {
 		idx := int((v - lo) / width)
 		if idx >= buckets {

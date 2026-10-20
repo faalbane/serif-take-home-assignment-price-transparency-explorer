@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"strings"
@@ -606,5 +607,86 @@ func TestCodeSummariesSeparateCodeSystems(t *testing.T) {
 	}
 	if cpt != 1 {
 		t.Errorf("summaries for 17250 = %d, want 1", cpt)
+	}
+}
+
+// buildWideStore produces a store with `n` rows under one billing code, for
+// exercising paths that only misbehave above the page-size clamp.
+func buildWideStore(t *testing.T, code string, n int) *Store {
+	t.Helper()
+	b := NewBuilder()
+	sid := b.AddSource(Source{URL: "synthetic", Description: "in-network file"})
+
+	groups := make([]tic.ProviderGroup, 0, n)
+	for i := 0; i < n; i++ {
+		groups = append(groups, tic.ProviderGroup{
+			NPI: []tic.FlexInt64{tic.FlexInt64(1000000000 + i)},
+			TIN: tic.TIN{Type: "ein", Value: fmt.Sprintf("%09d", 100000000+i), BusinessName: fmt.Sprintf("Group %d", i)},
+		})
+	}
+	b.AddProviderReference(sid, tic.ProviderReference{ProviderGroupID: 1, ProviderGroups: groups})
+	b.AddItem(sid, &tic.InNetworkItem{
+		NegotiationArrangement: "ffs",
+		Name:                   "SYNTHETIC WIDE",
+		BillingCode:            code,
+		BillingCodeType:        "CPT",
+		NegotiatedRates: []tic.NegotiatedRateGroup{{
+			ProviderReferences: []tic.FlexInt64{1},
+			NegotiatedPrices:   []tic.NegotiatedPrice{{NegotiatedRate: 10, BillingClass: "professional"}},
+		}},
+	})
+	s := b.Build()
+	if got := s.Search(Query{BillingCode: code}).Total; got != n {
+		t.Fatalf("fixture built %d rows, want %d", got, n)
+	}
+	return s
+}
+
+func TestPageSizeIsClampedForInteractiveQueries(t *testing.T) {
+	s := buildWideStore(t, "77777", 680)
+
+	res := s.Search(Query{BillingCode: "77777", PageSize: 50000})
+	if got, want := len(res.RowIDs), maxPageSize; got != want {
+		t.Errorf("interactive page returned %d rows, want it clamped to %d", got, want)
+	}
+	if res.Total != 680 {
+		t.Errorf("total = %d, want 680", res.Total)
+	}
+}
+
+func TestUnpagedLiftsTheClampForExport(t *testing.T) {
+	// The CSV export asks for up to 50,000 rows. Without Unpaged the query is
+	// silently clamped to 500 and the export loses the rest of the data while
+	// still reporting the higher cap.
+	s := buildWideStore(t, "77777", 680)
+
+	res := s.Search(Query{BillingCode: "77777", PageSize: 50000, Unpaged: true})
+	if got, want := len(res.RowIDs), 680; got != want {
+		t.Errorf("export returned %d rows, want all %d", got, want)
+	}
+	if res.Total != 680 {
+		t.Errorf("total = %d, want 680", res.Total)
+	}
+
+	// The cap must still bound an export larger than it.
+	small := s.Search(Query{BillingCode: "77777", PageSize: 100, Unpaged: true})
+	if got, want := len(small.RowIDs), 100; got != want {
+		t.Errorf("export honoured page size %d, want %d", got, want)
+	}
+}
+
+func TestHugePageOffsetDoesNotPanic(t *testing.T) {
+	s := buildFromFixture(t, sampleFixture)
+
+	// A page number big enough to overflow the offset multiply must clamp, not
+	// produce a negative slice bound.
+	for _, page := range []int{1 << 40, 1 << 50, math.MaxInt / 500, math.MaxInt} {
+		res := s.Search(Query{BillingCode: "A0427", Page: page, PageSize: 500})
+		if len(res.RowIDs) != 0 {
+			t.Errorf("page %d returned %d rows, want 0", page, len(res.RowIDs))
+		}
+		if res.Total != 17 {
+			t.Errorf("page %d total = %d, want 17", page, res.Total)
+		}
 	}
 }

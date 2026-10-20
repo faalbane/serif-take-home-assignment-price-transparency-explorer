@@ -1,0 +1,56 @@
+{
+  "reporting_entity_name": "Centene Management Company LLC",
+  "reporting_entity_type": "Third Party Administrator",
+  "last_updated_on": "2026-08-31",
+  "version": "2.0.0",
+  "reporting_structure": [
+    {
+      "reporting_plans": [
+        {
+          "plan_name": "Ambetter from Fidelis Care Bronze",
+          "plan_id_type": "hios",
+          "plan_id": "25303NY005",
+          "plan_market_type": "individual",
+          "issuer_name": "Fidelis Care"
+        },
+        {
+          "plan_name": "Ambetter from Fidelis Care Silver 200",
+          "plan_id_type": "hios",
+          "plan_id": "25303NY014",
+          "plan_market_type": "individual",
+          "issuer_name": "Fidelis Care"
+        },
+        {
+          "plan_name": "Ambetter from Fidelis Care Gold",
+          "plan_id_type": "hios",
+          "plan_id": "25303NY017",
+          "plan_market_type": "individual",
+          "issuer_name": "Fidelis Care"
+        }
+      ],
+      "in_network_files": [
+        {
+          "description": "in-network file",
+          "location": "testdata/in-network.sample.json"
+        }
+      ]
+    },
+    {
+      "reporting_plans": [
+        {
+          "plan_name": "Edge-case fixture plan",
+          "plan_id_type": "hios",
+          "plan_id": "99999NY001",
+          "plan_market_type": "individual",
+          "issuer_name": "Test Issuer"
+        }
+      ],
+      "in_network_files": [
+        {
+          "description": "in-network file",
+          "location": "testdata/in-network.malformed.json"
+        }
+      ]
+    }
+  ]
+}

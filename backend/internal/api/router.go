@@ -105,10 +105,14 @@ func withCORS(next http.Handler, allowed []string) http.Handler {
 	wildcard := allow["*"]
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Vary is set unconditionally: a shared cache must not serve a
+		// response that lacks the CORS header to a request from an allowed
+		// origin, or vice versa.
+		w.Header().Set("Vary", "Origin")
+
 		origin := r.Header.Get("Origin")
 		if origin != "" && (wildcard || allow[origin]) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 			w.Header().Set("Access-Control-Max-Age", "600")

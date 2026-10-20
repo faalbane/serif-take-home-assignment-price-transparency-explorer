@@ -30,6 +30,10 @@ const maxNPIsPerRow = 25
 // truncated rather than silently cut.
 const csvExportCap = 50000
 
+// maxPage bounds the page offset. At the 500-row maximum page size this is far
+// past the largest result set in the data (208,332 rows for revenue code 490).
+const maxPage = 1_000_000
+
 // Server holds the handler dependencies.
 type Server struct {
 	Ingest *ingest.Service
@@ -216,6 +220,7 @@ func (s *Server) RatesCSV(w http.ResponseWriter, r *http.Request) {
 	// cap is reachable in normal use and must never truncate silently.
 	q.Page = 1
 	q.PageSize = csvExportCap
+	q.Unpaged = true // lift the interactive page-size clamp for export only
 	res := st.Search(q)
 	truncated := res.Total > len(res.RowIDs)
 
@@ -239,16 +244,16 @@ func (s *Server) RatesCSV(w http.ResponseWriter, r *http.Request) {
 	})
 	for _, row := range buildResults(st, res.RowIDs, echo) {
 		_ = cw.Write([]string{
-			row.BillingCode, row.BillingCodeType, row.Name, row.Description,
+			row.BillingCode, row.BillingCodeType, csvCell(row.Name), csvCell(row.Description),
 			strconv.FormatFloat(row.NegotiatedRate, 'f', -1, 64), row.NegotiatedType,
 			row.BillingClass, row.Setting,
 			strings.Join(row.ServiceCodes, " "), strings.Join(row.Modifiers, " "),
 			row.ExpirationDate,
 			strconv.FormatInt(row.ProviderGroup.ProviderGroupID, 10),
-			row.ProviderGroup.BusinessName, row.ProviderGroup.EINDisplay,
+			csvCell(row.ProviderGroup.BusinessName), row.ProviderGroup.EINDisplay,
 			strconv.Itoa(row.ProviderGroup.NPICount), strings.Join(row.ProviderGroup.NPIs, " "),
-			row.AdditionalInformation,
-			row.Source.Label, row.Source.URL, row.Source.ReportingEntityName, row.Source.LastUpdatedOn,
+			csvCell(row.AdditionalInformation),
+			csvCell(row.Source.Label), row.Source.URL, csvCell(row.Source.ReportingEntityName), row.Source.LastUpdatedOn,
 		})
 	}
 
@@ -379,6 +384,12 @@ func parseRatesQuery(r *http.Request) (store.Query, QueryEcho, error) {
 	page := intParam(r, "page", 1)
 	if page < 1 {
 		page = 1
+	}
+	// An offset beyond any plausible result set is a stale or hand-edited URL.
+	// Clamping keeps the arithmetic in range rather than relying on the panic
+	// recovery middleware to turn it into a 500.
+	if page > maxPage {
+		page = maxPage
 	}
 	pageSize := intParam(r, "page_size", 50)
 	if pageSize < 1 {
@@ -540,6 +551,24 @@ func paginate(page, pageSize, total int) Pagination {
 		HasPrev:    page > 1,
 		HasNext:    page < totalPages,
 	}
+}
+
+// csvCell defuses spreadsheet formula injection.
+//
+// Business names, descriptions and entity names come from the payer's file. A
+// cell beginning with =, +, - or @ is evaluated as a formula by Excel and
+// LibreOffice, and CSV quoting does not prevent it. Prefixing with an
+// apostrophe forces the cell to be read as text; the apostrophe is not part of
+// the value and spreadsheets do not display it.
+func csvCell(s string) string {
+	if s == "" {
+		return s
+	}
+	switch s[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + s
+	}
+	return s
 }
 
 func sanitizeFilename(s string) string {

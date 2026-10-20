@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -143,7 +144,34 @@ func (s *Service) updateFile(i int, fn func(*FileProgress)) {
 // A failure to read the index is fatal to the run, because without it there is
 // nothing to ingest. A failure on an individual rate file is not: that source
 // is marked failed and the remaining sources still produce a usable dataset.
-func (s *Service) Run(ctx context.Context) error {
+// maxSources bounds how many in-network files one index may contribute.
+//
+// Source ordinals are int16 on every row, so an index with more than 32,767
+// files would overflow to a negative index and panic during the build. The
+// real Fidelis index has two.
+const maxSources = 4096
+
+func (s *Service) Run(ctx context.Context) (err error) {
+	// Ingest runs on its own goroutine, where a panic would take the process
+	// down rather than being caught by the HTTP recover middleware. Convert it
+	// into a failed ingest so the server stays up and the UI can report it.
+	defer func() {
+		rec := recover()
+		if rec == nil {
+			return
+		}
+		msg := fmt.Sprintf("ingest panicked: %v", rec)
+		// Record the failure before logging. The logger is caller-supplied, so
+		// it is the one thing in here that might itself panic -- and a recovery
+		// path that can fail is not a recovery path.
+		s.fail(msg)
+		err = errors.New(msg)
+		func() {
+			defer func() { _ = recover() }()
+			s.cfg.Logf("%s\n%s", msg, debug.Stack())
+		}()
+	}()
+
 	started := time.Now()
 	s.mu.Lock()
 	s.status = Status{
@@ -163,6 +191,10 @@ func (s *Service) Run(ctx context.Context) error {
 	targets := idx.InNetworkTargets()
 	if s.cfg.MaxFiles > 0 && len(targets) > s.cfg.MaxFiles {
 		targets = targets[:s.cfg.MaxFiles]
+	}
+	if len(targets) > maxSources {
+		s.cfg.Logf("index references %d in-network files; ingesting the first %d", len(targets), maxSources)
+		targets = targets[:maxSources]
 	}
 	if len(targets) == 0 {
 		err := errors.New("the index contains no in-network file references")

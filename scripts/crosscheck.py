@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import argparse
 import collections
+import csv
+import io
 import json
 import math
 import os
@@ -26,6 +28,9 @@ import random
 import sys
 import urllib.parse
 import urllib.request
+
+# Must match csvExportCap in backend/internal/api/handlers.go.
+CSV_CAP = 50000
 
 TIMEOUT = 120
 
@@ -286,8 +291,56 @@ def main() -> int:
         c.close(f"code {busiest_code} pagination rate sum", rate_sum,
                 sum(sorted(r[2] for r in by_code[busiest_code])), rel=1e-9)
 
-    # 8. Sort order ----------------------------------------------------------
-    log("[8/8] sort order")
+    # 8. Code summaries agree with the rate statistics -----------------------
+    #
+    # /api/codes and /api/meta.top_codes are aggregated separately from the
+    # per-query statistics, so they can drift from the rates they summarize.
+    # This is where a min/max aggregation bug hides: it is user-visible on the
+    # landing page and in typeahead, and nothing else checks it.
+    log(f"[8/10] code summaries vs rate statistics ({len(codes)} codes)")
+    for code in codes:
+        summaries = [s for s in api("/api/codes", q=code, limit=50)["results"] if s["billing_code"] == code]
+        if not summaries:
+            c.eq(f"code {code} has a summary", True, False)
+            continue
+        # Compare per code type, since a code can exist under several.
+        for summary in summaries:
+            res = api("/api/rates", code=code, code_type=summary["billing_code_type"], page_size=1)
+            st, total = res["stats"], res["pagination"]["total"]
+            c.eq(f"codes[{code}/{summary['billing_code_type']}].rows", summary["rows"], total)
+            if total == 0:
+                continue
+            c.close(f"codes[{code}/{summary['billing_code_type']}].min_rate", summary["min_rate"], st["min"])
+            c.close(f"codes[{code}/{summary['billing_code_type']}].max_rate", summary["max_rate"], st["max"])
+
+    # 9. CSV export matches what the API says it exported ---------------------
+    #
+    # The export path has its own paging behavior, so a clamp applied there and
+    # not in the JSON path would be invisible to every other check.
+    log("[9/10] CSV export row count and truncation headers")
+    for code in dict.fromkeys([busiest_code] + codes[:3]):
+        url = api_base + "/api/rates.csv?" + urllib.parse.urlencode({"code": code})
+        with urllib.request.urlopen(url, timeout=TIMEOUT) as r:
+            headers = dict(r.headers)
+            body = r.read().decode("utf-8", "replace")
+        rows = list(csv.reader(io.StringIO(body)))
+        total = int(headers.get("X-Total-Rows", "-1"))
+        exported = int(headers.get("X-Exported-Rows", "-1"))
+        truncated = headers.get("X-Truncated") == "true"
+
+        expected_total = api("/api/rates", code=code, page_size=1)["pagination"]["total"]
+        c.eq(f"csv {code} X-Total-Rows", total, expected_total)
+        c.eq(f"csv {code} X-Exported-Rows", exported, min(expected_total, CSV_CAP))
+        c.eq(f"csv {code} truncation flag", truncated, expected_total > CSV_CAP)
+
+        # header row + one row per exported record + a trailing notice if cut
+        want_lines = 1 + exported + (1 if truncated else 0)
+        c.eq(f"csv {code} line count", len(rows), want_lines)
+        if truncated:
+            c.eq(f"csv {code} carries a truncation notice", rows[-1][0].startswith("# TRUNCATED"), True)
+
+    # 10. Sort order ---------------------------------------------------------
+    log("[10/10] sort order")
     asc = [r["negotiated_rate"] for r in api("/api/rates", code=busiest_code, sort="rate_asc", page_size=200)["results"]]
     desc = [r["negotiated_rate"] for r in api("/api/rates", code=busiest_code, sort="rate_desc", page_size=200)["results"]]
     c.eq("rate_asc is non-decreasing", asc == sorted(asc), True)

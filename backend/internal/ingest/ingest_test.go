@@ -367,3 +367,27 @@ func TestCancelledContextStopsIngest(t *testing.T) {
 		t.Errorf("phase = %q, want failed", st.Phase)
 	}
 }
+
+func TestRunRecoversFromAPanic(t *testing.T) {
+	// Ingest runs on its own goroutine, outside the HTTP recover middleware.
+	// A panic there must fail the ingest, not kill the process.
+	indexURL := serveFixtures(t, "in-network.sample.json")
+	svc := newService(t, indexURL, func(c *Config) {
+		c.Logf = func(string, ...any) { panic("synthetic panic from the logger") }
+	})
+
+	err := svc.Run(context.Background())
+	if err == nil {
+		t.Fatal("expected an error after a panic")
+	}
+	if !strings.Contains(err.Error(), "panicked") {
+		t.Errorf("error = %v, want it to mention the panic", err)
+	}
+	st := svc.Status()
+	if st.Phase != PhaseFailed {
+		t.Errorf("phase = %q, want failed", st.Phase)
+	}
+	if !strings.Contains(st.Error, "panicked") {
+		t.Errorf("status error = %q, want it to mention the panic", st.Error)
+	}
+}

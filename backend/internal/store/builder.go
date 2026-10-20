@@ -138,7 +138,16 @@ func (b *Builder) AddProviderReference(sourceID int16, ref tic.ProviderReference
 	}
 	// A reference declared with no groups still needs an entry, otherwise rows
 	// pointing at it would look dangling.
-	b.refIndex[key] = append(b.refIndex[key], ordinals...)
+	//
+	// Ordinals are de-duplicated: internGroup already collapses identical
+	// groups, so a provider_group_id declared twice with the same groups would
+	// otherwise append the same ordinal again and duplicate every row that
+	// references it -- inflating totals, statistics and every facet count.
+	existing := b.refIndex[key]
+	for _, o := range ordinals {
+		existing = appendUnique(existing, o)
+	}
+	b.refIndex[key] = existing
 }
 
 func (b *Builder) internGroup(sourceID int16, gid int64, g tic.ProviderGroup, networks []string) int32 {
@@ -173,9 +182,18 @@ func (b *Builder) internGroup(sourceID int16, gid int64, g tic.ProviderGroup, ne
 		NetworkNames:    networks,
 	}
 
-	// Identity for de-duplication: a group is the same group if its source,
-	// reference id, tax identity and NPI set all match.
-	k := fmt.Sprintf("%d|%d|%s|%s|%s", sourceID, gid, pg.TINType, g.TIN.Value, strings.Join(npis, ","))
+	// Identity for de-duplication: a group is the same group only if its
+	// source, reference id, tax identity, business name and NPI set all match.
+	//
+	// The tax id is compared in its normalized form, so "11-3471596" and
+	// "113471596" are one group rather than two; the business name is part of
+	// the key so two differently-named groups sharing a TIN are not collapsed
+	// into whichever name happened to be seen first.
+	taxKey := pg.EIN
+	if taxKey == "" {
+		taxKey = strings.TrimSpace(g.TIN.Value)
+	}
+	k := fmt.Sprintf("%d|%d|%s|%s|%s|%s", sourceID, gid, pg.TINType, taxKey, pg.BusinessName, strings.Join(npis, ","))
 	if idx, ok := b.groupKey[k]; ok {
 		return idx
 	}
@@ -219,17 +237,47 @@ func (b *Builder) AddItem(sourceID int16, item *tic.InNetworkItem) {
 				NegotiatedTypeID: b.enums[dimNegotiatedType].id(negotiatedType),
 			}
 
-			// Inline provider groups: materialize them immediately.
+			// Inline provider groups: materialize them immediately. Identical
+			// repeated groups collapse to one row rather than duplicating.
+			if len(grp.ProviderGroups) == 0 && len(grp.ProviderReferences) == 0 {
+				// No provider on either side: there is nothing to attach the
+				// price to. Count it so the row total and the parsed price
+				// count can be reconciled.
+				b.placeholder["price_without_provider"]++
+				continue
+			}
+
+			seenInline := make(map[int32]bool, len(grp.ProviderGroups))
 			for _, ig := range grp.ProviderGroups {
+				g := b.internGroup(sourceID, 0, ig, nil)
+				if seenInline[g] {
+					continue
+				}
+				seenInline[g] = true
 				row := tmpl
-				row.Group = b.internGroup(sourceID, 0, ig, nil)
+				row.Group = g
 				b.rows = append(b.rows, row)
 			}
 
 			// Referenced provider groups: resolve now if known, else defer.
+			//
+			// A repeated id inside one list would otherwise emit the same row
+			// twice, so each id is handled at most once per price node.
+			seenRef := make(map[int64]bool, len(grp.ProviderReferences))
 			for _, refID := range grp.ProviderReferences {
-				key := refKey{sourceID, int64(refID)}
-				if ordinals, ok := b.refIndex[key]; ok {
+				id := int64(refID)
+				if seenRef[id] {
+					continue
+				}
+				seenRef[id] = true
+
+				key := refKey{sourceID, id}
+				// An entry that exists but holds no groups is treated the same
+				// as one that was never declared: defer it, so Build applies a
+				// single policy. Resolving it here as "zero groups" would drop
+				// the rate entirely, and which branch ran would depend on
+				// whether provider_references happened to precede in_network.
+				if ordinals, ok := b.refIndex[key]; ok && len(ordinals) > 0 {
 					for _, g := range ordinals {
 						row := tmpl
 						row.Group = g
@@ -430,9 +478,14 @@ func buildCodeSummaries(s *Store) []CodeSummary {
 		if a == nil {
 			continue
 		}
-		if r := s.rows[i].Rate; r < a.min {
+		// Independent comparisons: chaining these with else-if means a row that
+		// sets a new minimum never tests the maximum, which silently reports
+		// max == min for any code whose rows are not in ascending order.
+		r := s.rows[i].Rate
+		if r < a.min {
 			a.min = r
-		} else if r > a.max {
+		}
+		if r > a.max {
 			a.max = r
 		}
 	}
@@ -474,6 +527,10 @@ func (b *Builder) buildNotes() []string {
 	if n := b.placeholder["ein_wrong_length"]; n > 0 {
 		notes = append(notes, fmt.Sprintf(
 			"%d provider group EINs are not 9 digits after normalization.", n))
+	}
+	if n := b.placeholder["price_without_provider"]; n > 0 {
+		notes = append(notes, fmt.Sprintf(
+			"%d negotiated prices name no provider at all (neither provider_references nor provider_groups) and could not be turned into rate rows.", n))
 	}
 	if len(b.danglingRef) > 0 {
 		total := 0

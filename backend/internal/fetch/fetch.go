@@ -83,9 +83,6 @@ func (f *Fetcher) logf(format string, args ...any) {
 // which keeps ingest timing identical between cold and warm starts.
 func (f *Fetcher) Open(ctx context.Context, rawURL string) (*Result, error) {
 	if isLocal(rawURL) {
-		if !f.AllowLocalFiles {
-			return nil, fmt.Errorf("local file URLs are not permitted: %s", rawURL)
-		}
 		return f.openLocal(rawURL)
 	}
 
@@ -124,6 +121,14 @@ func (f *Fetcher) OpenCachedOnly(rawURL string) (*Result, error) {
 }
 
 func (f *Fetcher) openLocal(rawURL string) (*Result, error) {
+	// The gate lives here rather than at each call site so every path into the
+	// local filesystem is covered. OpenCachedOnly previously reached this
+	// function without checking, which meant offline mode would read a
+	// file:// location out of a cached index regardless of the setting.
+	if !f.AllowLocalFiles {
+		return nil, fmt.Errorf("local file URLs are not permitted: %s", rawURL)
+	}
+
 	path := strings.TrimPrefix(rawURL, "file://")
 	// Fixture URLs carry a "#n" discriminator so one file can stand in for
 	// several index entries; it is not part of the path.

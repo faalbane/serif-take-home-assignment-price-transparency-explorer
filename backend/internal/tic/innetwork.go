@@ -25,18 +25,26 @@ func (f *FlexInt64) UnmarshalJSON(b []byte) error {
 	}
 	s = strings.Trim(s, `"`)
 	n, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		// Some files emit NPIs with formatting characters.
-		if d := digitsOnly(s); d != "" {
-			if n2, err2 := strconv.ParseInt(d, 10, 64); err2 == nil {
-				*f = FlexInt64(n2)
-				return nil
-			}
-		}
+	if err == nil {
+		*f = FlexInt64(n)
+		return nil
+	}
+
+	// Some files emit identifiers with formatting characters ("123-456-7890").
+	// Stripping those is safe. Stripping a decimal point or an exponent is NOT:
+	// it would silently turn 1234567893.0 into 12345678930 and 1.0E+10 into
+	// 1010, remapping an identifier onto a different one. A number that is not
+	// an integer is an error, not something to salvage.
+	if strings.ContainsAny(s, ".eE") {
 		return fmt.Errorf("not an integer: %s", s)
 	}
-	*f = FlexInt64(n)
-	return nil
+	if d := digitsOnly(s); d != "" {
+		if n2, err2 := strconv.ParseInt(d, 10, 64); err2 == nil {
+			*f = FlexInt64(n2)
+			return nil
+		}
+	}
+	return fmt.Errorf("not an integer: %s", s)
 }
 
 // FlexStrings decodes either a JSON array of strings or a single JSON string
@@ -239,17 +247,19 @@ func StreamInNetwork(r io.Reader, h StreamHandler) (FileMeta, ParseStats, error)
 				if err := json.Unmarshal(raw, &ref); err != nil {
 					return err
 				}
-				stats.ProviderGroups += len(ref.ProviderGroups)
 				if h.ProviderRef != nil {
-					return h.ProviderRef(ref)
+					if err := h.ProviderRef(ref); err != nil {
+						return err
+					}
 				}
+				stats.ProviderGroups += len(ref.ProviderGroups)
 				return nil
 			})
+			stats.ProviderReferences += n
+			stats.SkippedProviderRefs += skipped
 			if err != nil {
 				return meta, stats, fmt.Errorf("provider_references: %w", err)
 			}
-			stats.ProviderReferences += n
-			stats.SkippedProviderRefs += skipped
 
 		case "in_network":
 			n, skipped, err := streamArray(dec, func(raw json.RawMessage) error {
@@ -257,20 +267,30 @@ func StreamInNetwork(r io.Reader, h StreamHandler) (FileMeta, ParseStats, error)
 				if err := json.Unmarshal(raw, &item); err != nil {
 					return err
 				}
+				// Attribute the nested counts only once the handler has
+				// accepted the record. Counting them first would include a
+				// record that the handler went on to reject or abort on, so
+				// the reported price count would not match the rows produced.
+				if h.Item != nil {
+					if err := h.Item(&item); err != nil {
+						return err
+					}
+				}
 				stats.RateGroups += len(item.NegotiatedRates)
 				for i := range item.NegotiatedRates {
 					stats.Prices += len(item.NegotiatedRates[i].NegotiatedPrices)
 				}
-				if h.Item != nil {
-					return h.Item(&item)
-				}
 				return nil
 			})
+			// Accumulate before returning: an abort (an item limit, or a
+			// cancelled context) still processed everything up to that point,
+			// and reporting zero items for a file that ingested data is worse
+			// than reporting none at all.
+			stats.Items += n
+			stats.SkippedItems += skipped
 			if err != nil {
 				return meta, stats, fmt.Errorf("in_network: %w", err)
 			}
-			stats.Items += n
-			stats.SkippedItems += skipped
 
 		case "reporting_entity_name", "reporting_entity_type", "plan_name",
 			"plan_id", "plan_id_type", "plan_market_type", "last_updated_on",

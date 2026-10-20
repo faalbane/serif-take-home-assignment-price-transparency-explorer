@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"net/http"
@@ -26,7 +27,10 @@ func newTestServer(t *testing.T) http.Handler {
 	f.AllowLocalFiles = true
 
 	svc := ingest.NewService(ingest.Config{IndexURL: indexPath, Fetcher: f})
-	if err := svc.Run(t.Context()); err != nil {
+	// context.Background rather than t.Context: the latter needs Go 1.24, and
+	// the module targets 1.23 so a reviewer on the documented minimum can
+	// actually build and vet the tests.
+	if err := svc.Run(context.Background()); err != nil {
 		t.Fatalf("ingest fixtures: %v", err)
 	}
 	return NewServer(svc, indexPath).Routes(Options{})
