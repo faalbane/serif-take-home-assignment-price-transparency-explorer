@@ -20,6 +20,9 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  /** patch records a value without searching (text inputs). */
+  patch: [Partial<SearchParams>]
+  /** update records a value and searches (selects, suggestion picks). */
   update: [Partial<SearchParams>]
   submit: []
   reset: []
@@ -50,8 +53,9 @@ function submit() {
           :model-value="params.code"
           :code-type="params.code_type"
           :invalid="invalidCode"
-          @update:model-value="emit('update', { code: $event })"
-          @update:code-type="emit('update', { code_type: $event })"
+          @update:model-value="emit('patch', { code: $event })"
+          @update:code-type="emit('patch', { code_type: $event })"
+          @pick="emit('update', { code: $event.code, code_type: $event.codeType })"
           @submit="submit"
         />
       </div>
@@ -59,14 +63,14 @@ function submit() {
       <ProviderIdInput
         :model-value="params.npi"
         kind="npi"
-        @update:model-value="emit('update', { npi: $event })"
+        @update:model-value="emit('patch', { npi: $event })"
         @submit="submit"
       />
 
       <ProviderIdInput
         :model-value="params.ein"
         kind="ein"
-        @update:model-value="emit('update', { ein: $event })"
+        @update:model-value="emit('patch', { ein: $event })"
         @submit="submit"
       />
 
@@ -105,16 +109,18 @@ function submit() {
         <label for="min-rate">Minimum rate</label>
         <input id="min-rate" class="input mono" type="number" min="0" step="0.01" inputmode="decimal"
                placeholder="0.00" :value="params.min_rate"
+               @input="emit('patch', { min_rate: ($event.target as HTMLInputElement).value })"
                @change="emit('update', { min_rate: ($event.target as HTMLInputElement).value })"
-               @keydown.enter.prevent="submit" />
+               @keydown.enter.prevent="emit('update', { min_rate: ($event.target as HTMLInputElement).value })" />
       </div>
 
       <div class="field">
         <label for="max-rate">Maximum rate</label>
         <input id="max-rate" class="input mono" type="number" min="0" step="0.01" inputmode="decimal"
                placeholder="no limit" :value="params.max_rate"
+               @input="emit('patch', { max_rate: ($event.target as HTMLInputElement).value })"
                @change="emit('update', { max_rate: ($event.target as HTMLInputElement).value })"
-               @keydown.enter.prevent="submit" />
+               @keydown.enter.prevent="emit('update', { max_rate: ($event.target as HTMLInputElement).value })" />
       </div>
 
       <div class="field plan-field">

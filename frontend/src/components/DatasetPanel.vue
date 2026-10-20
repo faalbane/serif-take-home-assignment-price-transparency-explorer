@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { MetaResponse } from '../api/types'
-import { bytes, count } from '../composables/useFormat'
+import { bytes, count, prettyUrl, safeUrl } from '../composables/useFormat'
 
 /** Dataset provenance, collapsed by default.
  *
@@ -45,7 +45,14 @@ const openSource = ref<number | null>(null)
 
       <div class="index-src">
         <span class="sec-label">Index file (source of truth)</span>
-        <a class="mono index-url" :href="meta.index_url" target="_blank" rel="noopener noreferrer">{{ meta.index_url }}</a>
+        <a
+          v-if="safeUrl(meta.index_url)"
+          class="mono index-url"
+          :href="safeUrl(meta.index_url)"
+          target="_blank"
+          rel="noopener noreferrer"
+        >{{ meta.index_url }}</a>
+        <span v-else class="mono index-url muted">{{ meta.index_url }}</span>
       </div>
 
       <div class="sources">
@@ -65,7 +72,19 @@ const openSource = ref<number | null>(null)
             <div v-if="openSource === src.id" class="src-detail">
               <p v-if="src.error" class="src-error">{{ src.error }}</p>
               <dl class="src-dl">
-                <div class="is-wide"><dt>URL</dt><dd><a class="mono src-url" :href="src.url" target="_blank" rel="noopener noreferrer">{{ decodeURIComponent(src.url) }}</a></dd></div>
+                <div class="is-wide">
+                  <dt>URL</dt>
+                  <dd>
+                    <a
+                      v-if="safeUrl(src.url)"
+                      class="mono src-url"
+                      :href="safeUrl(src.url)"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >{{ prettyUrl(src.url) }}</a>
+                    <span v-else class="mono src-url muted">{{ src.url }}</span>
+                  </dd>
+                </div>
                 <div><dt>Reporting entity</dt><dd>{{ src.reporting_entity_name }} <span class="muted">({{ src.reporting_entity_type }})</span></dd></div>
                 <div><dt>Last updated</dt><dd class="mono">{{ src.last_updated_on }}</dd></div>
                 <div><dt>Schema version</dt><dd class="mono">{{ src.version }}</dd></div>

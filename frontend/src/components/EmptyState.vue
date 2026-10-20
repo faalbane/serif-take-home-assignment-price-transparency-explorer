@@ -13,17 +13,24 @@ import { count, moneyCompact, titleCase } from '../composables/useFormat'
  */
 
 defineProps<{
-  variant: 'initial' | 'no-results' | 'error'
+  variant: 'initial' | 'no-results' | 'past-end' | 'error'
   code?: string
+  /** codeExists distinguishes "this code has no rates at all" from "a filter
+   *  removed them". Asserting the latter without evidence told users a code
+   *  existed when it did not. */
+  codeExists?: boolean
   suggestions?: CodeSummary[]
   topCodes?: CodeSummary[]
   activeFilters?: { label: string; value: string }[]
+  total?: number
+  page?: number
+  totalPages?: number
   errorMessage?: string
   errorDetail?: string
   errorHints?: string[]
 }>()
 
-const emit = defineEmits<{ pick: [CodeSummary]; clearFilters: []; retry: [] }>()
+const emit = defineEmits<{ pick: [CodeSummary]; clearFilters: []; retry: []; firstPage: [] }>()
 </script>
 
 <template>
@@ -53,9 +60,14 @@ const emit = defineEmits<{ pick: [CodeSummary]; clearFilters: []; retry: [] }>()
     <template v-else-if="variant === 'no-results'">
       <h3 class="empty-title">No rates match this search</h3>
       <p class="empty-body secondary">
-        <template v-if="activeFilters?.length">
-          Code <code>{{ code }}</code> exists, but no rate also satisfies
+        <template v-if="activeFilters?.length && codeExists">
+          Code <code>{{ code }}</code> has rates, but none also satisfies
           {{ activeFilters.map((f) => f.label).join(' and ') }}. Try removing a filter.
+        </template>
+        <template v-else-if="activeFilters?.length">
+          No rate matches <code>{{ code }}</code> with
+          {{ activeFilters.map((f) => f.label).join(' and ') }}, and the code itself
+          does not appear in the ingested files.
         </template>
         <template v-else>
           No in-network rate was filed for <code>{{ code }}</code> in the ingested files.
@@ -80,6 +92,17 @@ const emit = defineEmits<{ pick: [CodeSummary]; clearFilters: []; retry: [] }>()
           </button>
         </div>
       </div>
+    </template>
+
+    <template v-else-if="variant === 'past-end'">
+      <h3 class="empty-title">Page {{ page }} is past the end of these results</h3>
+      <p class="empty-body secondary">
+        Code <code>{{ code }}</code> has {{ count(total ?? 0) }} rates across
+        {{ count(totalPages ?? 0) }} pages. This link points beyond the last one.
+      </p>
+      <button class="btn btn-primary retry" type="button" @click="emit('firstPage')">
+        Go to the first page
+      </button>
     </template>
 
     <template v-else>

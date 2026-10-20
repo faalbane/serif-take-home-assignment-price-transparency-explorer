@@ -110,6 +110,12 @@ function onInput(event: Event) {
 
 function clear() {
   raw.value = ''
+  // Reset the resolution too, or the previously matched organization keeps
+  // showing under an empty field until the debounce catches up.
+  hits.value = []
+  lookedUp.value = false
+  resolving.value = false
+  controller?.abort()
   emit('update:modelValue', '')
   emit('submit')
 }

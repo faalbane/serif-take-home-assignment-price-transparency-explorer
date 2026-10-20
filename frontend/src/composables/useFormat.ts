@@ -27,7 +27,7 @@ export const moneyCompact = (n: number): string =>
   !Number.isFinite(n) ? '—' : currencyCompact.format(n)
 
 export const count = (n: number | undefined | null): string =>
-  n === undefined || n === null ? '—' : integer.format(n)
+  n === undefined || n === null || !Number.isFinite(n) ? '—' : integer.format(n)
 
 export const bytes = (n: number): string => {
   if (!Number.isFinite(n) || n <= 0) return '—'
@@ -69,7 +69,37 @@ export function titleCase(input: string | undefined): string {
       if (keepUpper.has(upper)) return upper
       // Anything containing a digit is a code, not a word.
       if (/\d/.test(bare)) return upper
-      return bare.charAt(0).toUpperCase() + bare.slice(1)
+      // Capitalize the first letter rather than the first character, or a
+      // leading bracket or quote leaves the word lowercase:
+      // "(SPLIT THICKNESS)" would render as "(split Thickness)".
+      return bare.replace(/[a-z]/, (c) => c.toUpperCase())
     })
     .join('')
+}
+
+/** safeUrl returns a URL only when it uses a scheme that is safe to put in an
+ *  href, otherwise undefined.
+ *
+ *  Source file URLs come from the payer's index file, which is third-party
+ *  content. Vue does not sanitize `:href`, so a `javascript:` location would
+ *  execute in the app's origin when a user clicked the link. `target="_blank"`
+ *  does not help — browsers ignore the target for that scheme. */
+export function safeUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined
+  return /^https?:\/\//i.test(url.trim()) ? url : undefined
+}
+
+/** prettyUrl renders a URL for display, decoding percent escapes when it can.
+ *
+ *  decodeURIComponent throws a URIError on a malformed escape such as a bare
+ *  "%" — a legal character in a URL — which would blank the whole component
+ *  via a Vue render error. The default index URL already contains %20, so this
+ *  path is live rather than theoretical. */
+export function prettyUrl(url: string | undefined): string {
+  if (!url) return ''
+  try {
+    return decodeURIComponent(url)
+  } catch {
+    return url
+  }
 }

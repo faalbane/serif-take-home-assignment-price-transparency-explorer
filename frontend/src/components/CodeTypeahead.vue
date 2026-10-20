@@ -20,6 +20,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [string]
   'update:codeType': [string]
+  /** pick emits the code and its code system together, so choosing a
+   *  suggestion is one state change and one search rather than three. */
+  pick: [{ code: string; codeType: string }]
   submit: []
 }>()
 
@@ -43,17 +46,23 @@ watch(
 
 watch(debounced, async (q) => {
   controller?.abort()
-  controller = new AbortController()
+  const mine = new AbortController()
+  controller = mine
   loading.value = true
   try {
-    const res = await api.codes(q.trim(), 10, controller.signal)
+    const res = await api.codes(q.trim(), 10, mine.signal)
+    // Identity guard: an aborted request rejects almost immediately, so
+    // without this the list empties and visibly blinks between keystrokes,
+    // and on a browser without AbortSignal.any a stale success could land on
+    // top of a newer one.
+    if (controller !== mine) return
     suggestions.value = res.results
     highlighted.value = -1
   } catch {
-    // A failed suggestion lookup must never block typing or submitting.
+    if (controller !== mine) return
     suggestions.value = []
   } finally {
-    loading.value = false
+    if (controller === mine) loading.value = false
   }
 })
 
@@ -67,19 +76,18 @@ function onInput(event: Event) {
 }
 
 function choose(s: CodeSummary) {
-  emit('update:modelValue', s.billing_code)
   // Codes are not unique across code systems -- 490 exists as both RC and CPT --
-  // so picking a suggestion also pins its code type.
-  emit('update:codeType', s.billing_code_type)
+  // so picking a suggestion pins its code type as well, in one emit.
   query.value = s.billing_code
   open.value = false
   highlighted.value = -1
-  nextTick(() => emit('submit'))
+  emit('pick', { code: s.billing_code, codeType: s.billing_code_type })
 }
 
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
     if (!open.value) {
+      event.preventDefault()
       open.value = true
       return
     }
@@ -88,6 +96,11 @@ function onKeydown(event: KeyboardEvent) {
     if (n === 0) return
     const delta = event.key === 'ArrowDown' ? 1 : -1
     highlighted.value = (highlighted.value + delta + n) % n
+    // The list scrolls; without this the last options are unreachable by
+    // keyboard.
+    nextTick(() => {
+      document.getElementById(`code-opt-${highlighted.value}`)?.scrollIntoView({ block: 'nearest' })
+    })
     return
   }
   if (event.key === 'Enter') {

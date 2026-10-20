@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import type { RateResult, Stats } from '../api/types'
-import { count, formatNPI, money, titleCase } from '../composables/useFormat'
+import { count, formatNPI, money, prettyUrl, safeUrl, titleCase } from '../composables/useFormat'
 
 /** The result table.
  *
@@ -21,13 +21,27 @@ const props = defineProps<{
 
 const emit = defineEmits<{ sort: [string]; filterEin: [string]; filterNpi: [string] }>()
 
-const expanded = ref<Set<number>>(new Set())
-const copied = ref<number | null>(null)
+// Expansion is keyed by row identity, not array index. Keying by index meant
+// expanding row 3 and paging forward left row 3 of the NEXT page expanded,
+// showing a different provider's provenance under a different rate.
+const expanded = ref<Set<string>>(new Set())
+const copied = ref<string | null>(null)
 
-function toggle(i: number) {
+const rowKey = (row: RateResult, i: number) =>
+  `${row.source.id}:${row.provider_group.provider_group_id}:${row.negotiated_rate}:${i}`
+
+watch(
+  () => props.results,
+  () => {
+    expanded.value = new Set()
+    copied.value = null
+  },
+)
+
+function toggle(key: string) {
   const next = new Set(expanded.value)
-  if (next.has(i)) next.delete(i)
-  else next.add(i)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
   expanded.value = next
 }
 
@@ -59,12 +73,12 @@ function cycleRateSort() {
   emit('sort', props.sort === 'rate_asc' ? 'rate_desc' : 'rate_asc')
 }
 
-async function copyRow(row: RateResult, index: number) {
+async function copyRow(row: RateResult, key: string) {
   try {
     await navigator.clipboard.writeText(JSON.stringify(row, null, 2))
-    copied.value = index
+    copied.value = key
     setTimeout(() => {
-      if (copied.value === index) copied.value = null
+      if (copied.value === key) copied.value = null
     }, 1600)
   } catch {
     // Clipboard access can be denied; the expanded panel already shows the data.
@@ -90,7 +104,11 @@ async function copyRow(row: RateResult, index: number) {
         </caption>
         <thead>
           <tr>
-            <th scope="col" class="col-rate">
+            <th
+              scope="col"
+              class="col-rate"
+              :aria-sort="sort === 'rate_asc' ? 'ascending' : sort === 'rate_desc' ? 'descending' : 'none'"
+            >
               <button class="th-sort" type="button" @click="cycleRateSort">
                 Rate
                 <span class="sort-arrow" aria-hidden="true">{{ sort === 'rate_desc' ? '↓' : sort === 'rate_asc' ? '↑' : '' }}</span>
@@ -108,15 +126,11 @@ async function copyRow(row: RateResult, index: number) {
           </tr>
         </thead>
         <tbody>
-          <template v-for="(row, i) in results" :key="`${row.source.id}-${row.provider_group.provider_group_id}-${row.negotiated_rate}-${i}`">
+          <template v-for="(row, i) in results" :key="rowKey(row, i)">
             <tr
               class="rate-row"
-              :class="{ 'is-expanded': expanded.has(i) }"
-              tabindex="0"
-              :aria-expanded="expanded.has(i)"
-              @click="toggle(i)"
-              @keydown.enter.prevent="toggle(i)"
-              @keydown.space.prevent="toggle(i)"
+              :class="{ 'is-expanded': expanded.has(rowKey(row, i)) }"
+              @click="toggle(rowKey(row, i))"
             >
               <td class="col-rate">
                 <div class="rate nums">{{ money(row.negotiated_rate) }}</div>
@@ -181,19 +195,35 @@ async function copyRow(row: RateResult, index: number) {
               </td>
 
               <td class="col-actions">
-                <span class="chevron" aria-hidden="true">{{ expanded.has(i) ? '▴' : '▾' }}</span>
+                <!-- A real button rather than a focusable <tr>. The row's own
+                     keydown handlers also fired when Enter or Space was
+                     pressed on the EIN and NPI buttons nested inside it, both
+                     filtering AND toggling the row. -->
+                <button
+                  class="expand-btn"
+                  type="button"
+                  :aria-expanded="expanded.has(rowKey(row, i))"
+                  :aria-controls="`detail-${rowKey(row, i)}`"
+                  @click.stop="toggle(rowKey(row, i))"
+                >
+                  <span aria-hidden="true">{{ expanded.has(rowKey(row, i)) ? '▴' : '▾' }}</span>
+                  <span class="visually-hidden">
+                    Details for {{ money(row.negotiated_rate) }},
+                    {{ row.provider_group.business_name || 'unnamed provider group' }}
+                  </span>
+                </button>
               </td>
             </tr>
 
-            <tr v-if="expanded.has(i)" class="detail-row">
-              <td colspan="7">
+            <tr v-if="expanded.has(rowKey(row, i))" class="detail-row">
+              <td colspan="7" :id="`detail-${rowKey(row, i)}`">
                 <div class="detail">
                   <section class="detail-sec">
                     <h4>What is priced</h4>
                     <dl>
                       <div><dt>Billing code</dt><dd class="mono">{{ row.billing_code }} <span class="muted">({{ [row.billing_code_type, row.billing_code_type_version].filter(Boolean).join(' ') }})</span></dd></div>
-                      <div><dt>Short name</dt><dd>{{ titleCase(row.name) || '—' }}</dd></div>
-                      <div><dt>Description</dt><dd>{{ titleCase(row.description) || '—' }}</dd></div>
+                      <div><dt>Short name</dt><dd :title="row.name">{{ titleCase(row.name) || '—' }}</dd></div>
+                      <div><dt>Description</dt><dd :title="row.description">{{ titleCase(row.description) || '—' }}</dd></div>
                       <div><dt>Arrangement</dt><dd>{{ row.negotiation_arrangement || '—' }}</dd></div>
                     </dl>
                   </section>
@@ -258,14 +288,20 @@ async function copyRow(row: RateResult, index: number) {
                       <div>
                         <dt>File</dt>
                         <dd class="file-link">
-                          <a :href="row.source.url" target="_blank" rel="noopener noreferrer">
-                            {{ decodeURIComponent(row.source.url.split('/').pop() || row.source.url) }}
+                          <a
+                            v-if="safeUrl(row.source.url)"
+                            :href="safeUrl(row.source.url)"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {{ prettyUrl(row.source.url.split('/').pop() || row.source.url) }}
                           </a>
+                          <span v-else class="mono muted">{{ row.source.url }}</span>
                         </dd>
                       </div>
                     </dl>
-                    <button class="btn btn-sm copy-btn" type="button" @click.stop="copyRow(row, i)">
-                      {{ copied === i ? 'Copied' : 'Copy row as JSON' }}
+                    <button class="btn btn-sm copy-btn" type="button" @click.stop="copyRow(row, rowKey(row, i))">
+                      {{ copied === rowKey(row, i) ? 'Copied' : 'Copy row as JSON' }}
                     </button>
                   </section>
                 </div>
@@ -360,7 +396,22 @@ tbody td {
 
 .rate-row:hover { background: var(--surface-2); }
 .rate-row.is-expanded { background: var(--surface-2); }
-.rate-row:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
+.expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.expand-btn:hover { background: var(--surface-3); color: var(--text-primary); }
 
 .col-rate { width: 140px; }
 .col-ein { width: 118px; }
@@ -411,11 +462,6 @@ tbody td {
 
 .matched-npi { font-size: 11.5px; }
 .npi-count { font-size: 13px; }
-
-.chevron {
-  color: var(--text-muted);
-  font-size: 11px;
-}
 
 /* Expanded detail -------------------------------------------------------- */
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { api } from './api/client'
 import type { CodeSummary, SearchParams } from './api/types'
 import DatasetPanel from './components/DatasetPanel.vue'
@@ -16,9 +16,12 @@ import { useRateSearch } from './composables/useRateSearch'
 import { useTheme } from './composables/useTheme'
 
 const { status, meta, error: ingestError, refresh } = useIngest()
-const { params, response, error, loading, hasSearched, hasResults, search, update, reset, syncFromUrl } =
+const { params, response, error, loading, hasSearched, hasResults, search, patch, update, reset, run, syncFromUrl } =
   useRateSearch()
 const { theme, cycle: cycleTheme } = useTheme()
+
+/** Mirrors csvExportCap in backend/internal/api/handlers.go. */
+const CSV_EXPORT_CAP = 50000
 
 /** The dataset gate. Everything below needs an ingested store, so the app shows
  *  real ingest progress instead of an empty table. */
@@ -45,7 +48,10 @@ const activeFilters = computed(() => {
   if (p.code_type) out.push({ label: 'code system', value: p.code_type })
   if (p.billing_class) out.push({ label: 'billing class', value: p.billing_class })
   if (p.setting) out.push({ label: 'setting', value: p.setting })
-  if (p.source) out.push({ label: 'source file', value: p.source })
+  if (p.source) {
+    const match = response.value?.facets.source.find((f) => f.value === p.source)
+    out.push({ label: 'source file', value: match?.label ?? p.source })
+  }
   if (p.min_rate) out.push({ label: 'min rate', value: p.min_rate })
   if (p.max_rate) out.push({ label: 'max rate', value: p.max_rate })
   if (p.plan_id) out.push({ label: 'plan', value: p.plan_id })
@@ -57,7 +63,29 @@ const csvHref = computed(() => api.csvUrl(params.value))
 /** The rates on the current page, for the chart's small-result-set view. */
 const pageRates = computed(() => response.value?.results.map((r) => r.negotiated_rate) ?? [])
 
-const csvWillTruncate = computed(() => (response.value?.pagination.total ?? 0) > 50000)
+const csvWillTruncate = computed(() => (response.value?.pagination.total ?? 0) > CSV_EXPORT_CAP)
+
+/** Whether the searched code exists at all, as opposed to existing but being
+ *  filtered down to nothing. The server's suggestions answer this: an exact
+ *  match means the code is real and a filter is responsible for the blank. */
+const codeExists = computed(() => {
+  const r = response.value
+  if (!r) return false
+  return (r.suggestions ?? []).some((c) => c.billing_code === r.query.billing_code)
+})
+
+/** A page beyond the end of the result set is a stale or shared URL, not an
+ *  empty search, and needs its own way back. */
+const pastEnd = computed(() => {
+  const p = response.value?.pagination
+  return !!p && p.total > 0 && p.page > p.total_pages
+})
+
+/** Facets are shown for any completed search that returned facet data,
+ *  whether or not it returned rows. */
+const showFacets = computed(
+  () => !!response.value && hasSearched.value && !error.value && !pastEnd.value,
+)
 
 function pickCode(c: CodeSummary) {
   // Pin the code system too: the same number exists under several systems.
@@ -78,41 +106,70 @@ function clearAllFilters() {
   })
 }
 
-function onFacetUpdate(patch: Partial<SearchParams>) {
-  void update(patch)
+/** A control whose activation IS the search intent: facet chip, sort, page,
+ *  suggestion card. These search immediately. */
+function onFacetUpdate(next: Partial<SearchParams>) {
+  void update(next)
+}
+
+/** A text input. These only record the value; the search runs on submit, so
+ *  typing issues neither a request nor a history entry per character. */
+function onPatch(next: Partial<SearchParams>) {
+  patch(next)
 }
 
 const liveRegion = ref('')
 
 function announce(text: string) {
-  // Reassigning to the same string would not re-announce.
+  // Reassigning the same string would not re-announce, so clear first. A
+  // timeout rather than requestAnimationFrame: rAF runs before paint in the
+  // same frame, so both assignments coalesce into one accessibility-tree
+  // change and the repeat is lost -- and rAF never fires in a background tab.
   liveRegion.value = ''
-  requestAnimationFrame(() => {
+  setTimeout(() => {
     liveRegion.value = text
-  })
+  }, 120)
 }
+
+/** Announce every change to the results, not just submitted searches.
+ *
+ *  Facet chips, sort, pagination and the in-row filter buttons all swap the
+ *  table contents through update(), which previously said nothing at all. */
+watch([response, error], () => {
+  if (error.value) {
+    announce(`Search failed: ${error.value.message}`)
+    return
+  }
+  const r = response.value
+  if (!r) return
+  announce(
+    `${count(r.pagination.total)} rate${r.pagination.total === 1 ? '' : 's'} for code ${r.query.billing_code}, ` +
+      `page ${r.pagination.page} of ${Math.max(1, r.pagination.total_pages)}.`,
+  )
+})
 
 async function runSearch() {
   await search()
-  const r = response.value
-  if (error.value) announce(`Search failed: ${error.value.message}`)
-  else if (r) announce(`${count(r.pagination.total)} rates found for code ${r.query.billing_code}.`)
 }
 
 const onPopState = () => void syncFromUrl()
 
+// A shared or reloaded URL already carries a code; run it as soon as the
+// dataset is ready. A watcher rather than a polling interval: it fires
+// immediately on a warm server instead of after a 250ms flash of the empty
+// state, and it cannot spin forever when ingest has failed.
+watch(
+  ready,
+  (isReady) => {
+    // run(), not search(): search() resets to page 1, which would silently
+    // discard the page number in a shared link.
+    if (isReady && params.value.code.trim() && !hasSearched.value) void run({ pushUrl: false })
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
   window.addEventListener('popstate', onPopState)
-  // A shared or reloaded URL already carries a code; run it.
-  if (params.value.code.trim()) {
-    const waitForData = setInterval(() => {
-      if (ready.value) {
-        clearInterval(waitForData)
-        void runSearch()
-      }
-    }, 250)
-    onUnmounted(() => clearInterval(waitForData))
-  }
 })
 
 onUnmounted(() => window.removeEventListener('popstate', onPopState))
@@ -149,12 +206,25 @@ onUnmounted(() => window.removeEventListener('popstate', onPopState))
           :domains="meta!.facet_domains"
           :plans="meta!.plans"
           :loading="loading"
+          @patch="onPatch"
           @update="onFacetUpdate"
           @submit="runSearch"
           @reset="reset"
         />
 
         <p class="visually-hidden" role="status" aria-live="polite">{{ liveRegion }}</p>
+
+        <!-- Facets render whenever a search produced facet data, including
+             when it produced no rows. Their counts exclude their own filter,
+             so they are exactly what tells a user which selection emptied the
+             table and what to switch to -- which is useless if they vanish at
+             the moment the table goes blank. -->
+        <FacetFilters
+          v-if="showFacets"
+          :facets="response!.facets"
+          :params="params"
+          @update="onFacetUpdate"
+        />
 
         <!-- Error from the request itself -->
         <EmptyState
@@ -174,6 +244,17 @@ onUnmounted(() => window.removeEventListener('popstate', onPopState))
           @pick="pickCode"
         />
 
+        <!-- A shared or stale URL pointing past the last page -->
+        <EmptyState
+          v-else-if="pastEnd"
+          variant="past-end"
+          :code="response?.query.billing_code"
+          :total="response?.pagination.total"
+          :page="response?.pagination.page"
+          :total-pages="response?.pagination.total_pages"
+          @first-page="onFacetUpdate({ page: 1 })"
+        />
+
         <!-- Searched, no rows -->
         <EmptyState
           v-else-if="!hasResults"
@@ -181,12 +262,14 @@ onUnmounted(() => window.removeEventListener('popstate', onPopState))
           :code="response?.query.billing_code"
           :suggestions="response?.suggestions ?? []"
           :active-filters="activeFilters"
+          :code-exists="codeExists"
           @pick="pickCode"
           @clear-filters="clearAllFilters"
         />
 
         <!-- Results -->
         <template v-else>
+          <div class="visually-hidden" :aria-busy="loading" />
           <div class="result-head">
             <div class="grow">
               <h2 class="result-title">
@@ -215,8 +298,6 @@ onUnmounted(() => window.removeEventListener('popstate', onPopState))
           </ul>
 
           <RateDistribution :stats="response!.stats" :page-rates="pageRates" />
-
-          <FacetFilters :facets="response!.facets" :params="params" @update="onFacetUpdate" />
 
           <ResultsTable
             :results="response!.results"

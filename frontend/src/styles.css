@@ -22,7 +22,10 @@
 
   --text-primary: #0b0b0b;
   --text-secondary: #52514e;
-  --text-muted: #7c7b76;
+  /* 4.6:1 on --surface-2, the worst surface this sits on. The previous
+     #7c7b76 measured 3.69:1 there, below the 4.5:1 required for small text,
+     and this colour carries data (NPI counts, facet counts, field labels). */
+  --text-muted: #67665f;
   --text-inverse: #fcfcfb;
 
   --series-1: #2a78d6;
@@ -31,7 +34,7 @@
 
   --good: #0f7a4f;
   --good-soft: #d9f0e4;
-  --warn: #9a6400;
+  --warn: #8a5a00;
   --warn-soft: #fbeecd;
   --critical: #b3221f;
   --critical-soft: #fadcdb;

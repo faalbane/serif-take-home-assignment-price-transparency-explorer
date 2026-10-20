@@ -32,8 +32,20 @@ const groups = computed<Group[]>(() => {
     { key: 'setting', label: 'Setting', src: props.facets.setting },
   ]
   return defs
-    // One option means the filter cannot narrow anything.
-    .filter((d) => (d.src?.length ?? 0) > 1)
+    .filter((d) => {
+      const options = d.src?.length ?? 0
+      if (options === 0) return false
+      // A dimension with one option normally cannot narrow anything, so it is
+      // hidden as noise -- the whole dataset has a single `setting` value.
+      //
+      // But if a filter IS active on that dimension, the single remaining
+      // option is the most useful control on the page: it is the value the
+      // user could switch to, and the only way back from a selection that
+      // emptied the table. Filtering code 490 to "professional" leaves exactly
+      // one option, "institutional", carrying all 208,332 rows.
+      if (options === 1) return String(props.params[d.key] ?? '') !== ''
+      return true
+    })
     .map((d) => ({
       key: d.key,
       label: d.label,
@@ -57,8 +69,14 @@ const activeCount = computed(
 
 <template>
   <div v-if="groups.length" class="facets">
-    <div v-for="group in groups" :key="String(group.key)" class="facet">
-      <span class="facet-label">{{ group.label }}</span>
+    <div
+      v-for="group in groups"
+      :key="String(group.key)"
+      class="facet"
+      role="group"
+      :aria-labelledby="`facet-label-${String(group.key)}`"
+    >
+      <span :id="`facet-label-${String(group.key)}`" class="facet-label">{{ group.label }}</span>
       <div class="facet-chips">
         <button
           v-for="opt in group.options"

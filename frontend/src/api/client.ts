@@ -12,6 +12,8 @@ import type {
  *  field, the detail and the recovery hints rather than a generic failure. */
 export class ApiError extends Error {
   readonly status: number
+  /** field is the rejected query parameter, when the server named one. */
+  readonly field: string
   readonly detail: string
   readonly hints: string[]
   /** notReady marks a 503 during ingest, which the UI handles as "come back
@@ -19,10 +21,16 @@ export class ApiError extends Error {
   readonly notReady: boolean
 
   constructor(status: number, body: Partial<ApiErrorBody>, fallback: string) {
-    super(body.error || fallback)
+    // The server puts the rejected field name in `error` and the human
+    // sentence in `detail`. Showing the raw field name as a headline gives the
+    // user a red panel reading "min_rate", so the sentence is promoted and the
+    // field is kept separately for highlighting the input.
+    const looksLikeFieldName = !!body.error && /^[a-z_]+$/.test(body.error)
+    super((looksLikeFieldName ? body.detail : body.error) || body.error || fallback)
+    this.field = looksLikeFieldName ? body.error! : ''
     this.name = 'ApiError'
     this.status = status
-    this.detail = body.detail ?? ''
+    this.detail = looksLikeFieldName ? '' : (body.detail ?? '')
     this.hints = body.hints ?? []
     this.notReady = status === 503
   }

@@ -36,12 +36,17 @@ const failed = computed(() => props.status?.phase === 'failed' || !!props.error)
 </script>
 
 <template>
-  <div class="gate" role="status" aria-live="polite">
+  <div class="gate">
     <div class="card gate-card">
       <div class="gate-head">
         <span class="spinner" :class="{ 'is-failed': failed }" aria-hidden="true" />
         <div class="grow">
-          <h2 class="gate-title">{{ failed ? 'Could not load the rate data' : phaseLabel }}</h2>
+          <!-- Only the phase is a live region. The byte counters update every
+               600ms, and announcing the whole card on each poll made a screen
+               reader read the full download progress for 13 seconds straight. -->
+          <h2 class="gate-title" role="status" aria-live="polite">
+            {{ failed ? 'Could not load the rate data' : phaseLabel }}
+          </h2>
           <p class="gate-msg secondary">
             {{ error || status?.message || 'Contacting the API…' }}
           </p>
@@ -59,11 +64,12 @@ const failed = computed(() => props.status?.phase === 'failed' || !!props.error)
       </p>
 
       <div v-if="downloadProgress !== null && !failed" class="progress" :aria-valuenow="downloadProgress"
-           role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Download progress">
+           role="progressbar" aria-valuemin="0" aria-valuemax="100"
+           aria-label="Download progress" :aria-valuetext="`${downloadProgress}% downloaded`">
         <div class="progress-fill" :style="{ width: `${downloadProgress}%` }" />
       </div>
 
-      <ul v-if="status?.files?.length" class="files">
+      <ul v-if="status?.files?.length" class="files" aria-hidden="true">
         <li v-for="file in status.files" :key="file.url" class="file">
           <span class="file-dot" :class="`is-${file.status}`" aria-hidden="true" />
           <span class="file-name mono truncate" :title="file.url">

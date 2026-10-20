@@ -17,6 +17,10 @@ export function useIngest() {
   let timer: ReturnType<typeof setTimeout> | undefined
   let stopped = false
   let consecutiveFailures = 0
+  /** generation invalidates in-flight poll chains. clearTimeout cannot cancel
+   *  a poll that is already awaiting its request, so without this every Retry
+   *  click while a request was in flight started a second permanent chain. */
+  let generation = 0
 
   const stop = () => {
     stopped = true
@@ -36,10 +40,11 @@ export function useIngest() {
     }
   }
 
-  const poll = async () => {
-    if (stopped) return
+  const poll = async (gen = generation) => {
+    if (stopped || gen !== generation) return
     try {
       const s = await api.health()
+      if (gen !== generation) return
       status.value = s
       consecutiveFailures = 0
 
@@ -53,10 +58,11 @@ export function useIngest() {
         // and a stuck banner with no recovery path is worse than a retry.
         error.value = s.error || s.message
         loading.value = false
-        timer = setTimeout(poll, 5000)
+        timer = setTimeout(() => poll(gen), 5000)
         return
       }
     } catch (err) {
+      if (gen !== generation) return
       consecutiveFailures++
       // The server may simply not be listening yet. Only call it an error once
       // a few attempts in a row have failed.
@@ -69,12 +75,13 @@ export function useIngest() {
       }
     }
     // Poll briskly during a cold start: the whole wait is seconds, not minutes.
-    timer = setTimeout(poll, consecutiveFailures > 0 ? 1500 : 600)
+    timer = setTimeout(() => poll(gen), consecutiveFailures > 0 ? 1500 : 600)
   }
 
   /** refresh re-reads health and meta, for the retry button. */
   const refresh = async () => {
     stopped = false
+    generation++ // retire any chain already awaiting a response
     consecutiveFailures = 0
     error.value = null
     loading.value = true
