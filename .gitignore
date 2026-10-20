@@ -7,6 +7,11 @@ frontend/dist/
 backend/bin/
 backend/server
 
+# Test and coverage output
+frontend/coverage/
+backend/coverage.out
+*.tsbuildinfo
+
 # Runtime data cache (raw CMS files, hundreds of MB)
 .cache/
 backend/.cache/
