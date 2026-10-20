@@ -606,3 +606,21 @@ func TestOnlyGETIsRouted(t *testing.T) {
 		t.Errorf("POST to /api/rates returned 200; the API is read-only")
 	}
 }
+
+func TestRowsCarryAUniqueSourceLabel(t *testing.T) {
+	h := newTestServer(t)
+
+	resp := decode[RatesResponse](t, get(t, h, "/api/rates?code=10006"))
+	labels := map[string]bool{}
+	for _, r := range resp.Results {
+		if r.Source.Label == "" {
+			t.Fatalf("row from source %d has no label", r.Source.ID)
+		}
+		labels[r.Source.Label] = true
+	}
+	// Both fixtures price 10006; their labels must differ, otherwise the table
+	// cannot say which file a rate came from.
+	if len(labels) != len(resp.Results) {
+		t.Errorf("labels = %v, want one distinct label per source", labels)
+	}
+}

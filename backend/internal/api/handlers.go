@@ -235,7 +235,7 @@ func (s *Server) RatesCSV(w http.ResponseWriter, r *http.Request) {
 		"negotiated_rate", "negotiated_type", "billing_class", "setting",
 		"service_codes", "billing_code_modifiers", "expiration_date",
 		"provider_group_id", "business_name", "ein", "npi_count", "npis",
-		"additional_information", "source_url", "reporting_entity_name", "last_updated_on",
+		"additional_information", "source_label", "source_url", "reporting_entity_name", "last_updated_on",
 	})
 	for _, row := range buildResults(st, res.RowIDs, echo) {
 		_ = cw.Write([]string{
@@ -248,7 +248,7 @@ func (s *Server) RatesCSV(w http.ResponseWriter, r *http.Request) {
 			row.ProviderGroup.BusinessName, row.ProviderGroup.EINDisplay,
 			strconv.Itoa(row.ProviderGroup.NPICount), strings.Join(row.ProviderGroup.NPIs, " "),
 			row.AdditionalInformation,
-			row.Source.URL, row.Source.ReportingEntityName, row.Source.LastUpdatedOn,
+			row.Source.Label, row.Source.URL, row.Source.ReportingEntityName, row.Source.LastUpdatedOn,
 		})
 	}
 
@@ -496,6 +496,7 @@ func buildResults(st *store.Store, ids []int32, echo QueryEcho) []RateResult {
 				ID:                  src.ID,
 				StructureIndex:      src.StructureIndex,
 				Description:         src.Description,
+				Label:               src.Label,
 				URL:                 src.URL,
 				ReportingEntityName: src.ReportingEntityName,
 				ReportingEntityType: src.ReportingEntityType,

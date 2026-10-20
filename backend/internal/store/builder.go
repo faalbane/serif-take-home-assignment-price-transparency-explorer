@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"math"
 	"net/url"
 	"sort"
 	"strings"
@@ -381,38 +382,78 @@ func (b *Builder) Build() *Store {
 	return s
 }
 
+// buildCodeSummaries aggregates per (billing code, code type), not per item.
+//
+// The same code is filed under many item names -- revenue code 490 appears
+// under 328 distinct procedure names, each carrying the identical rate ladder.
+// Summarizing per item would make typeahead return the same code ten times over
+// and understate how much data each code really has.
 func buildCodeSummaries(s *Store) []CodeSummary {
+	type key struct{ code, codeType string }
 	type agg struct {
-		rows     int
-		min, max float64
+		rows               int
+		min, max           float64
+		bestName, bestDesc string
+		bestRows           int
+		names              map[string]bool
 	}
-	byKey := map[int32]*agg{}
+
+	rowsPerItem := make([]int, len(s.items))
 	for i := range s.rows {
-		r := &s.rows[i]
-		a, ok := byKey[r.Item]
+		rowsPerItem[s.rows[i].Item]++
+	}
+
+	byKey := map[key]*agg{}
+	for itemIdx := range s.items {
+		rows := rowsPerItem[itemIdx]
+		if rows == 0 {
+			continue
+		}
+		it := &s.items[itemIdx]
+		k := key{it.BillingCode, it.BillingCodeType}
+		a, ok := byKey[k]
 		if !ok {
-			a = &agg{min: r.Rate, max: r.Rate}
-			byKey[r.Item] = a
+			a = &agg{min: math.Inf(1), max: math.Inf(-1), names: map[string]bool{}}
+			byKey[k] = a
 		}
-		a.rows++
-		if r.Rate < a.min {
-			a.min = r.Rate
-		}
-		if r.Rate > a.max {
-			a.max = r.Rate
+		a.rows += rows
+		a.names[it.Name] = true
+		if rows > a.bestRows {
+			a.bestRows, a.bestName, a.bestDesc = rows, it.Name, it.Description
 		}
 	}
+
+	// Rate extremes are per code, so they need their own pass over the rows.
+	for i := range s.rows {
+		it := &s.items[s.rows[i].Item]
+		a := byKey[key{it.BillingCode, it.BillingCodeType}]
+		if a == nil {
+			continue
+		}
+		if r := s.rows[i].Rate; r < a.min {
+			a.min = r
+		} else if r > a.max {
+			a.max = r
+		}
+	}
+
 	out := make([]CodeSummary, 0, len(byKey))
-	for itemIdx, a := range byKey {
-		it := s.items[itemIdx]
+	for k, a := range byKey {
+		if math.IsInf(a.min, 1) {
+			a.min, a.max = 0, 0
+		}
+		if math.IsInf(a.max, -1) {
+			a.max = a.min
+		}
 		out = append(out, CodeSummary{
-			BillingCode:     it.BillingCode,
-			BillingCodeType: it.BillingCodeType,
-			Name:            it.Name,
-			Description:     it.Description,
+			BillingCode:     k.code,
+			BillingCodeType: k.codeType,
+			Name:            a.bestName,
+			Description:     a.bestDesc,
 			Rows:            a.rows,
 			MinRate:         a.min,
 			MaxRate:         a.max,
+			NameCount:       len(a.names),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {

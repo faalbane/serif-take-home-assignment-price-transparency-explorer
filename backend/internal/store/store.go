@@ -147,6 +147,10 @@ type CodeSummary struct {
 	Rows            int     `json:"rows"`
 	MinRate         float64 `json:"min_rate"`
 	MaxRate         float64 `json:"max_rate"`
+	// NameCount is how many distinct item names share this code. Revenue code
+	// 490 is filed under 328 of them in the Fidelis files, all carrying the
+	// same rate ladder, so a per-name listing would bury every other code.
+	NameCount int `json:"name_count"`
 }
 
 // Sources returns ingest metadata for every file the store knows about,

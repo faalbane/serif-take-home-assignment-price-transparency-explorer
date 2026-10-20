@@ -525,3 +525,86 @@ func TestPlanFilterRestrictsToCoveringSources(t *testing.T) {
 		t.Errorf("uncovered plan = %d rows, want 0", got)
 	}
 }
+
+func TestCodeSummariesAggregateAcrossItemNames(t *testing.T) {
+	// The live files file revenue code 490 under 328 distinct procedure names,
+	// all carrying the same rate ladder. Summaries must collapse to one entry
+	// per (code, code type) or typeahead returns the same code over and over.
+	b := NewBuilder()
+	sid := b.AddSource(Source{URL: "synthetic", Description: "in-network file"})
+	b.AddProviderReference(sid, tic.ProviderReference{
+		ProviderGroupID: 1,
+		ProviderGroups: []tic.ProviderGroup{{
+			NPI: []tic.FlexInt64{1396747861},
+			TIN: tic.TIN{Type: "ein", Value: "11-3471596", BusinessName: "Test Group"},
+		}},
+	})
+
+	for i, name := range []string{"KNEE ARTHROSCOPY", "SHOULDER ARTHROSCOPY", "EYELID REPAIR"} {
+		b.AddItem(sid, &tic.InNetworkItem{
+			NegotiationArrangement: "ffs",
+			Name:                   name,
+			BillingCode:            "490",
+			BillingCodeType:        "RC",
+			NegotiatedRates: []tic.NegotiatedRateGroup{{
+				ProviderReferences: []tic.FlexInt64{1},
+				NegotiatedPrices: []tic.NegotiatedPrice{
+					{NegotiatedRate: float64(10 * (i + 1)), BillingClass: "institutional"},
+					{NegotiatedRate: float64(100 * (i + 1)), BillingClass: "institutional"},
+				},
+			}},
+		})
+	}
+	s := b.Build()
+
+	var found []CodeSummary
+	for _, c := range s.SearchCodes("490", 20) {
+		if c.BillingCode == "490" {
+			found = append(found, c)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("code 490 produced %d summaries, want 1: %+v", len(found), found)
+	}
+	got := found[0]
+	if got.NameCount != 3 {
+		t.Errorf("NameCount = %d, want 3", got.NameCount)
+	}
+	// Six price nodes, one provider group each.
+	if got.Rows != 6 {
+		t.Errorf("Rows = %d, want 6 (summed across every item name)", got.Rows)
+	}
+	if got.MinRate != 10 || got.MaxRate != 300 {
+		t.Errorf("rate range = %v..%v, want 10..300", got.MinRate, got.MaxRate)
+	}
+	// The label is the name carrying the most rows; all three tie here, so just
+	// require that it is one of them rather than encoding map iteration order.
+	switch got.Name {
+	case "KNEE ARTHROSCOPY", "SHOULDER ARTHROSCOPY", "EYELID REPAIR":
+	default:
+		t.Errorf("Name = %q, want one of the filed item names", got.Name)
+	}
+
+	// Searching must still find all rows regardless of which name was chosen.
+	if total := s.Search(Query{BillingCode: "490"}).Total; total != 6 {
+		t.Errorf("search total = %d, want 6", total)
+	}
+}
+
+func TestCodeSummariesSeparateCodeSystems(t *testing.T) {
+	s := buildFromFixture(t, sampleFixture)
+
+	// 17250 is CPT in the fixture; a same-numbered RC code must not merge.
+	cpt := 0
+	for _, c := range s.SearchCodes("17250", 20) {
+		if c.BillingCode == "17250" {
+			cpt++
+			if c.BillingCodeType != "CPT" {
+				t.Errorf("unexpected code type %q", c.BillingCodeType)
+			}
+		}
+	}
+	if cpt != 1 {
+		t.Errorf("summaries for 17250 = %d, want 1", cpt)
+	}
+}

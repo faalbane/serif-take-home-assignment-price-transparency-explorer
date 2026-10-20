@@ -63,9 +63,13 @@ type ProviderGroupView struct {
 
 // SourceRef is the provenance block attached to every row.
 type SourceRef struct {
-	ID                  int    `json:"id"`
-	StructureIndex      int    `json:"structure_index"`
-	Description         string `json:"description,omitempty"`
+	ID             int    `json:"id"`
+	StructureIndex int    `json:"structure_index"`
+	Description    string `json:"description,omitempty"`
+	// Label distinguishes this file from the others. The index gives every
+	// Fidelis in-network file the same description, so the description alone
+	// cannot identify which file a rate came from.
+	Label               string `json:"label"`
 	URL                 string `json:"url"`
 	ReportingEntityName string `json:"reporting_entity_name,omitempty"`
 	ReportingEntityType string `json:"reporting_entity_type,omitempty"`
