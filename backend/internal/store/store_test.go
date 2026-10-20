@@ -690,3 +690,137 @@ func TestHugePageOffsetDoesNotPanic(t *testing.T) {
 		}
 	}
 }
+
+func TestAlternateCodeSpellingIsNarrowAndReported(t *testing.T) {
+	s := buildFromFixture(t, malformedFixture)
+
+	// The file stores "0450"; the unpadded spelling must find it and say so.
+	res := s.Search(Query{BillingCode: "450"})
+	if res.Total != 1 {
+		t.Fatalf("unpadded lookup = %d rows, want 1", res.Total)
+	}
+	if res.MatchedCode != "0450" {
+		t.Errorf("MatchedCode = %q, want %q -- a substituted code must be reported", res.MatchedCode, "0450")
+	}
+
+	// An exact hit must not claim a substitution.
+	if res := s.Search(Query{BillingCode: "0450"}); res.MatchedCode != "" {
+		t.Errorf("MatchedCode = %q on an exact match, want empty", res.MatchedCode)
+	}
+}
+
+func TestAlternateCodeSpellingDoesNotCrossCodeLengths(t *testing.T) {
+	// A store holding only revenue code "100" must not answer a search for the
+	// five-digit CPT anesthesia code "00100". Unbounded zero-stripping made it
+	// return a completely different code's rates.
+	b := NewBuilder()
+	sid := b.AddSource(Source{URL: "synthetic"})
+	b.AddProviderReference(sid, tic.ProviderReference{
+		ProviderGroupID: 1,
+		ProviderGroups: []tic.ProviderGroup{{
+			NPI: []tic.FlexInt64{1396747861},
+			TIN: tic.TIN{Type: "ein", Value: "11-3471596", BusinessName: "Test"},
+		}},
+	})
+	b.AddItem(sid, &tic.InNetworkItem{
+		Name: "REVENUE CODE 100", BillingCode: "100", BillingCodeType: "RC",
+		NegotiatedRates: []tic.NegotiatedRateGroup{{
+			ProviderReferences: []tic.FlexInt64{1},
+			NegotiatedPrices:   []tic.NegotiatedPrice{{NegotiatedRate: 42, BillingClass: "institutional"}},
+		}},
+	})
+	s := b.Build()
+
+	if got := s.Search(Query{BillingCode: "00100"}).Total; got != 0 {
+		t.Errorf("searching 00100 returned %d rows from code 100; the fallback must not change code length", got)
+	}
+	// The legitimate 3-to-4 digit revenue-code toggle still works.
+	if got := s.Search(Query{BillingCode: "0100"}).Total; got != 1 {
+		t.Errorf("searching 0100 = %d rows, want 1", got)
+	}
+}
+
+func TestFloatTypedIdentifiersAreRejectedNotMangled(t *testing.T) {
+	// A provider_group_id of 3.0 must not silently become 30, which would
+	// attach rows to a different provider group entirely.
+	var id tic.FlexInt64
+	for _, bad := range []string{"3.0", "1.0E+10", "1234567893.0", "1e3"} {
+		if err := id.UnmarshalJSON([]byte(bad)); err == nil {
+			t.Errorf("UnmarshalJSON(%s) = %d with no error; a non-integer must not be salvaged", bad, int64(id))
+		}
+	}
+	// Formatting characters are still stripped, which is the intended case.
+	if err := id.UnmarshalJSON([]byte(`"123-456-7890"`)); err != nil || id != 1234567890 {
+		t.Errorf("formatted identifier = %d, err %v; want 1234567890", int64(id), err)
+	}
+}
+
+func TestDuplicateProviderReferenceDoesNotDuplicateRows(t *testing.T) {
+	b := NewBuilder()
+	sid := b.AddSource(Source{URL: "synthetic"})
+	ref := tic.ProviderReference{
+		ProviderGroupID: 7,
+		ProviderGroups: []tic.ProviderGroup{{
+			NPI: []tic.FlexInt64{1396747861},
+			TIN: tic.TIN{Type: "ein", Value: "11-3471596", BusinessName: "Dup Test"},
+		}},
+	}
+	// The same reference declared twice, and referenced twice in one list.
+	b.AddProviderReference(sid, ref)
+	b.AddProviderReference(sid, ref)
+	b.AddItem(sid, &tic.InNetworkItem{
+		Name: "DUP", BillingCode: "11111", BillingCodeType: "CPT",
+		NegotiatedRates: []tic.NegotiatedRateGroup{{
+			ProviderReferences: []tic.FlexInt64{7, 7},
+			NegotiatedPrices:   []tic.NegotiatedPrice{{NegotiatedRate: 10, BillingClass: "professional"}},
+		}},
+	})
+	s := b.Build()
+
+	if got := s.Search(Query{BillingCode: "11111"}).Total; got != 1 {
+		t.Errorf("rows = %d, want 1; duplicate references must not duplicate rows", got)
+	}
+}
+
+func TestEmptyProviderReferenceKeepsTheRateRegardlessOfKeyOrder(t *testing.T) {
+	// A reference declared with no groups must behave identically to one that
+	// was never declared: keep the rate, mark the provider unresolved. The
+	// resolve-on-arrival and deferred paths previously disagreed, so the row
+	// count depended on whether provider_references preceded in_network.
+	build := func(refFirst bool) *Store {
+		b := NewBuilder()
+		sid := b.AddSource(Source{URL: "synthetic"})
+		addRef := func() {
+			b.AddProviderReference(sid, tic.ProviderReference{ProviderGroupID: 5})
+		}
+		addItem := func() {
+			b.AddItem(sid, &tic.InNetworkItem{
+				Name: "EMPTY REF", BillingCode: "22222", BillingCodeType: "CPT",
+				NegotiatedRates: []tic.NegotiatedRateGroup{{
+					ProviderReferences: []tic.FlexInt64{5},
+					NegotiatedPrices:   []tic.NegotiatedPrice{{NegotiatedRate: 99, BillingClass: "professional"}},
+				}},
+			})
+		}
+		if refFirst {
+			addRef()
+			addItem()
+		} else {
+			addItem()
+			addRef()
+		}
+		return b.Build()
+	}
+
+	for _, refFirst := range []bool{true, false} {
+		s := build(refFirst)
+		res := s.Search(Query{BillingCode: "22222"})
+		if res.Total != 1 {
+			t.Errorf("provider_references first=%v: rows = %d, want 1", refFirst, res.Total)
+			continue
+		}
+		if g := s.Group(s.Row(res.RowIDs[0]).Group); !g.Unresolved {
+			t.Errorf("provider_references first=%v: group should be marked unresolved", refFirst)
+		}
+	}
+}

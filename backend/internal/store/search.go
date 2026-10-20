@@ -99,8 +99,9 @@ type Result struct {
 	Total  int
 	Stats  Stats
 	Facets Facets
-	// Truncated reports that the matched set exceeded the scan ceiling.
-	Truncated bool
+	// MatchedCode is set when no rows carried the requested billing code and
+	// the search fell back to its alternate zero-padded spelling.
+	MatchedCode string
 }
 
 const (
@@ -133,15 +134,21 @@ const (
 func (s *Store) Search(q Query) Result {
 	code := strings.TrimSpace(q.BillingCode)
 	candidates := s.byCode[code]
+
+	res := Result{Stats: Stats{}}
 	if len(candidates) == 0 {
 		// Billing codes are frequently zero-padded in RC files ("0450") and
-		// unpadded elsewhere. Try the other spelling before giving up.
+		// unpadded elsewhere. Try the other spelling before giving up, and
+		// report the substitution: silently answering a different code than
+		// the one that was asked for would be worse than finding nothing.
 		if alt := alternateCodeSpelling(code); alt != "" {
-			candidates = s.byCode[alt]
+			if alternates := s.byCode[alt]; len(alternates) > 0 {
+				candidates = alternates
+				res.MatchedCode = alt
+			}
 		}
 	}
 
-	res := Result{Stats: Stats{}}
 	if len(candidates) == 0 {
 		return res
 	}
@@ -577,11 +584,4 @@ func histogram(sorted []float64, buckets int) []Bucket {
 		out[idx].Count++
 	}
 	return out
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

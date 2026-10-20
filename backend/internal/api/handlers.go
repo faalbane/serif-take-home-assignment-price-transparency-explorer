@@ -177,6 +177,12 @@ func (s *Server) Rates(w http.ResponseWriter, r *http.Request) {
 	res := st.Search(q)
 	results := buildResults(st, res.RowIDs, echo)
 
+	if res.MatchedCode != "" {
+		echo.Warnings = append(echo.Warnings, fmt.Sprintf(
+			"no rates are filed under %q; showing %q instead, which is the same revenue code without the zero padding",
+			q.BillingCode, res.MatchedCode))
+	}
+
 	resp := RatesResponse{
 		Query:      echo,
 		Pagination: paginate(echo.Page, echo.PageSize, res.Total),

@@ -2,6 +2,7 @@ package tic
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -220,7 +221,6 @@ func StreamInNetwork(r io.Reader, h StreamHandler) (FileMeta, ParseStats, error)
 		stats ParseStats
 	)
 	dec := json.NewDecoder(r)
-	dec.UseNumber()
 
 	tok, err := dec.Token()
 	if err != nil {
@@ -377,8 +377,11 @@ func (a abortError) Unwrap() error { return a.err }
 func Abort(err error) error { return abortError{err} }
 
 func isHandlerAbort(err error) bool {
-	_, ok := err.(abortError)
-	return ok
+	var a abortError
+	// errors.As rather than a bare type assertion, so a handler that wraps the
+	// abort still stops the stream instead of being treated as one malformed
+	// record to skip.
+	return errors.As(err, &a)
 }
 
 // decodeLoose decodes a scalar, tolerating a null or a number where a string is
