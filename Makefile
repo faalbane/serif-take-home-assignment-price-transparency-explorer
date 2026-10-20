@@ -19,7 +19,8 @@ help:
 	@echo "  make backend    Run the API only (:8080)"
 	@echo "  make frontend   Run the Vite dev server only (:5173)"
 	@echo "  make build      Build the frontend and the server binary"
-	@echo "  make test       Run Go tests and the frontend typecheck"
+	@echo "  make test       Run Go tests, frontend typecheck and frontend tests"
+	@echo "  make mutation   Verify the test suites catch the bugs they claim to"
 	@echo "  make test-race  Run Go tests under the race detector"
 	@echo "  make cover      Go test coverage summary"
 	@echo "  make verify     Cross-check the running API against the raw CMS files"
@@ -84,7 +85,17 @@ offline:
 .PHONY: test
 test: $(FRONTEND)/node_modules
 	cd $(BACKEND) && go test ./... -count=1
-	cd $(FRONTEND) && npm run typecheck
+	cd $(FRONTEND) && npm run typecheck && npm test
+
+.PHONY: test-frontend
+test-frontend: $(FRONTEND)/node_modules
+	cd $(FRONTEND) && npm test
+
+# Reverts each bug found during development and asserts the suites catch it.
+# A test that still passes against broken code is not protecting anything.
+.PHONY: mutation
+mutation: $(FRONTEND)/node_modules
+	python3 scripts/mutation-check.py
 
 .PHONY: test-race
 test-race:

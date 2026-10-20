@@ -628,3 +628,58 @@ func TestRowsCarryAUniqueSourceLabel(t *testing.T) {
 		t.Errorf("labels = %v, want one distinct label per source", labels)
 	}
 }
+
+func TestCSVCellsAreDefusedAgainstFormulaInjection(t *testing.T) {
+	// Business names and descriptions come from the payer's file. A cell
+	// beginning with =, +, - or @ is evaluated as a formula by Excel and
+	// LibreOffice, and CSV quoting does not prevent it.
+	for _, tc := range []struct{ in, want string }{
+		{`=HYPERLINK("http://evil/","click")`, `'=HYPERLINK("http://evil/","click")`},
+		{"+1234", "'+1234"},
+		{"-1+2", "'-1+2"},
+		{"@SUM(A1:A9)", "'@SUM(A1:A9)"},
+		{"\tLeading tab", "'\tLeading tab"},
+		{"Northern Westchester Hospital", "Northern Westchester Hospital"},
+		{"", ""},
+		{"11-3471596", "11-3471596"},    // a dash inside the value is harmless
+		{"-11-3471596", "'-11-3471596"}, // a LEADING dash is defused even when benign
+	} {
+		if got := csvCell(tc.in); got != tc.want {
+			t.Errorf("csvCell(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestCSVExportDefusesProviderNamesFromTheFile(t *testing.T) {
+	h := newTestServer(t)
+
+	rec := get(t, h, "/api/rates.csv?code=10006")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	rows, err := csv.NewReader(strings.NewReader(rec.Body.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("parse CSV: %v", err)
+	}
+	// Locate the free-text columns and assert none of them starts a formula.
+	header := rows[0]
+	idx := map[string]int{}
+	for i, name := range header {
+		idx[name] = i
+	}
+	for _, col := range []string{"name", "description", "business_name", "reporting_entity_name"} {
+		at, ok := idx[col]
+		if !ok {
+			t.Fatalf("CSV header is missing %q", col)
+		}
+		for _, row := range rows[1:] {
+			if at >= len(row) || row[at] == "" {
+				continue
+			}
+			switch row[at][0] {
+			case '=', '+', '-', '@':
+				t.Errorf("column %q leaks an unescaped formula start: %q", col, row[at])
+			}
+		}
+	}
+}

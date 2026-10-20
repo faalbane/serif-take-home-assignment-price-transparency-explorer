@@ -824,3 +824,58 @@ func TestEmptyProviderReferenceKeepsTheRateRegardlessOfKeyOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestCodeSummaryMaxWithDescendingRates(t *testing.T) {
+	// The min/max aggregation must use two independent comparisons. Chained
+	// with else-if, a row that sets a new minimum never tests the maximum, so
+	// any code whose rows are not in ascending order reports max == min.
+	//
+	// Rates are deliberately descending here: an ascending fixture passes
+	// against the broken code, which is exactly why the original bug survived
+	// into the live dataset and showed $3.16-$3.16 for a $3.16-$8.89 range.
+	b := NewBuilder()
+	sid := b.AddSource(Source{URL: "synthetic"})
+	b.AddProviderReference(sid, tic.ProviderReference{
+		ProviderGroupID: 1,
+		ProviderGroups: []tic.ProviderGroup{{
+			NPI: []tic.FlexInt64{1396747861},
+			TIN: tic.TIN{Type: "ein", Value: "11-3471596", BusinessName: "Test"},
+		}},
+	})
+	b.AddItem(sid, &tic.InNetworkItem{
+		Name: "DESCENDING", BillingCode: "86701", BillingCodeType: "CPT",
+		NegotiatedRates: []tic.NegotiatedRateGroup{{
+			ProviderReferences: []tic.FlexInt64{1},
+			NegotiatedPrices: []tic.NegotiatedPrice{
+				{NegotiatedRate: 8.89, BillingClass: "professional"},
+				{NegotiatedRate: 5.12, BillingClass: "professional"},
+				{NegotiatedRate: 3.16, BillingClass: "professional"},
+			},
+		}},
+	})
+	s := b.Build()
+
+	var summary *CodeSummary
+	for _, c := range s.SearchCodes("86701", 10) {
+		if c.BillingCode == "86701" {
+			cp := c
+			summary = &cp
+		}
+	}
+	if summary == nil {
+		t.Fatal("no summary for 86701")
+	}
+	if summary.MinRate != 3.16 {
+		t.Errorf("MinRate = %v, want 3.16", summary.MinRate)
+	}
+	if summary.MaxRate != 8.89 {
+		t.Errorf("MaxRate = %v, want 8.89 -- a descending row order must still find the maximum", summary.MaxRate)
+	}
+
+	// And it must agree with what a query for the same code reports.
+	st := s.Search(Query{BillingCode: "86701"}).Stats
+	if summary.MinRate != st.Min || summary.MaxRate != st.Max {
+		t.Errorf("summary %v..%v disagrees with query statistics %v..%v",
+			summary.MinRate, summary.MaxRate, st.Min, st.Max)
+	}
+}

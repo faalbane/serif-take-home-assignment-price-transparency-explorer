@@ -158,7 +158,7 @@ const tooltipX = computed(() => {
         :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
         preserveAspectRatio="none"
         role="img"
-        :aria-label="`Histogram of ${stats.count} negotiated rates from ${money(stats.min)} to ${money(stats.max)}, median ${money(stats.median)}`"
+        :aria-label="`Histogram of ${count(stats.count)} negotiated rates from ${money(stats.min)} to ${money(stats.max)}. Median ${money(stats.median)}, quartiles ${money(stats.p25)} and ${money(stats.p75)}.`"
         @mouseleave="hovered = null"
       >
         <!-- Baseline, recessive. -->

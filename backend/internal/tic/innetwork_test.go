@@ -254,3 +254,38 @@ func TestHandlerPlainErrorSkipsRecord(t *testing.T) {
 		t.Errorf("handler accepted %d, want 5", accepted)
 	}
 }
+
+func TestFlexInt64RejectsNonIntegersRatherThanMangling(t *testing.T) {
+	// The digits-only fallback exists for formatted identifiers such as
+	// "123-456-7890". Applied to a non-integer it silently remaps one
+	// identifier onto another: 1234567893.0 becomes 12345678930, and a
+	// provider_group_id of 3.0 becomes 30, attaching rows to a different
+	// provider group entirely.
+	for _, bad := range []string{"3.0", "1.0E+10", "1234567893.0", "1e3", "3.5"} {
+		var v FlexInt64
+		if err := v.UnmarshalJSON([]byte(bad)); err == nil {
+			t.Errorf("UnmarshalJSON(%s) = %d with no error; a non-integer must not be salvaged", bad, int64(v))
+		}
+	}
+
+	// The intended cases still work.
+	for _, tc := range []struct {
+		in   string
+		want FlexInt64
+	}{
+		{`1396747861`, 1396747861},
+		{`"1396747861"`, 1396747861},
+		{`"139-674-7861"`, 1396747861},
+		{`null`, 0},
+		{`""`, 0},
+	} {
+		var v FlexInt64
+		if err := v.UnmarshalJSON([]byte(tc.in)); err != nil {
+			t.Errorf("UnmarshalJSON(%s) returned %v", tc.in, err)
+			continue
+		}
+		if v != tc.want {
+			t.Errorf("UnmarshalJSON(%s) = %d, want %d", tc.in, int64(v), int64(tc.want))
+		}
+	}
+}

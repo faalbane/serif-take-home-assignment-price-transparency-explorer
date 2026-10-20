@@ -99,7 +99,9 @@ function onKeydown(event: KeyboardEvent) {
     // The list scrolls; without this the last options are unreachable by
     // keyboard.
     nextTick(() => {
-      document.getElementById(`code-opt-${highlighted.value}`)?.scrollIntoView({ block: 'nearest' })
+      // Guard the method, not just the element: scrollIntoView is absent in
+      // some environments, and a missing scroll must not break navigation.
+      document.getElementById(`code-opt-${highlighted.value}`)?.scrollIntoView?.({ block: 'nearest' })
     })
     return
   }

@@ -248,7 +248,11 @@ query runs on submit, so typing a code doesn't issue a request per character.
   the response headers *and* as a trailing row rather than truncating silently.
 - **A hostile index file could make the server fetch internal URLs.** Out of
   scope: the index is operator-configured and defaults to a trusted CDN.
-- **No frontend tests** — only a typecheck. The clearest remaining gap.
+- **Presentational components are untested.** `App.vue`, `SearchPanel`,
+  `IngestBanner` and `DatasetPanel` are covered only by the typecheck; the
+  logic-bearing components and composables are tested directly.
+- **No end-to-end test.** The cold-start gate and the full search flow were
+  verified by hand in a browser, not by Playwright.
 
 ---
 
@@ -309,17 +313,42 @@ data-quality notes recorded during ingest.
 ### Tests
 
 ```bash
-make test        # Go tests + frontend typecheck
+make test        # Go tests, frontend typecheck, frontend tests
 make test-race   # race detector
+make mutation    # verify the suites catch the bugs they claim to
 make lint        # gofmt + go vet
 ```
 
-**82.6% statement coverage**, clean under `-race` and `go vet`, and no test
-reaches the internet — fixtures are served from loopback `httptest` or the local
-filesystem, verified by running the suite with outbound traffic blocked.
-`backend/testdata/in-network.malformed.json` is a deliberately hostile fixture
-covering skipped records, inline provider groups, dangling references,
+Backend: **83.4% statement coverage**, clean under `-race` and `go vet`.
+Frontend: **150 tests** (Vitest + Vue Test Utils) over the composables and the
+components with real logic — 64% statements, 81% branches.
+
+No test reaches the internet. Fixtures are served from loopback `httptest` or
+the local filesystem, verified by running the suite with outbound traffic
+blocked. `backend/testdata/in-network.malformed.json` is a deliberately hostile
+fixture covering skipped records, inline provider groups, dangling references,
 non-standard keys and coerced scalars.
+
+### Do the tests actually work?
+
+A passing suite proves nothing by itself: a test that still passes against
+broken code is not protecting anything. `scripts/mutation-check.py` reverts
+each bug found during development, runs the relevant suite, and asserts it
+fails — then restores every file it touched.
+
+```
+16/16 reverted bugs were caught by the test suites
+```
+
+That covers the `else if` that reported `max == min`, the CSV clamp, the
+unbounded zero-stripping, duplicated provider references, the page-offset
+overflow, mangled float identifiers, formula injection, `javascript:` URLs,
+the search-per-keystroke regression, and the rest.
+
+Running it the first time found three backend bugs whose tests did **not**
+catch them — an ascending-order fixture that passed against the broken
+min/max, a test filed in the wrong package, and formula escaping with no test
+at all. Those gaps are now closed, which is the entire point of the exercise.
 
 ---
 
@@ -386,8 +415,8 @@ geography, turning "who charges this" into "what does this cost near me".
 **Multi-payer.** Several indexes ingested concurrently with the same code
 compared across them. The main thing the single-dataset UI assumption blocks.
 
-**Frontend tests.** Vitest over the composables — URL state round-tripping and
-the search request lifecycle especially — and Playwright for the cold-start gate.
+**Playwright.** The composables and logic-bearing components have unit tests;
+the cold-start gate and the full search flow are still verified by hand.
 
 **Out-of-network support.** `AllowedAmountFile` is already parsed. The honest
 blocker is that `store.Row` has one `Rate` and the query path assumes one row
